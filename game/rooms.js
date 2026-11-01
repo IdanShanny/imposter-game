@@ -70,7 +70,10 @@ function sendPromptsToPlayers(io, room, round) {
     for (const [socketId] of room.players) {
         const isImposter = socketId === room.round.imposterSocketId;
         const question = isImposter ? round.imposterQuestion : round.realQuestion;
-        io.to(socketId).emit('game:yourPrompt', { question });
+        const playerSocket = io.sockets.sockets.get(socketId);
+        if (playerSocket) {
+            playerSocket.emit('game:yourPrompt', { question });
+        }
     }
 }
 
@@ -86,8 +89,8 @@ function beginRound(io, room) {
     };
     room.phase = 'ANSWER';
 
-    sendPromptsToPlayers(io, room, round);
     broadcastPhase(io, room);
+    sendPromptsToPlayers(io, room, round);
     broadcastAnswerProgress(io, room);
 }
 

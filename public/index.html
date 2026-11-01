@@ -325,19 +325,19 @@
             showFormError('');
         }
 
-        function showAnswerScreen() {
-            hideAllScreens();
-            document.getElementById('screenAnswer').classList.remove('hidden');
-            document.getElementById('answerStatus').textContent = '';
-            document.getElementById('answerProgress').textContent = '';
-            showFormError('');
-        }
-
-        function resetAnswerForm() {
+        function prepareAnswerScreen() {
             document.getElementById('promptText').textContent = 'טוען…';
             document.getElementById('answerInput').value = '';
             document.getElementById('answerInput').disabled = false;
             document.getElementById('submitAnswerBtn').disabled = false;
+            document.getElementById('answerStatus').textContent = '';
+            document.getElementById('answerProgress').textContent = '';
+        }
+
+        function showAnswerScreen() {
+            hideAllScreens();
+            document.getElementById('screenAnswer').classList.remove('hidden');
+            showFormError('');
         }
 
         function showLobby(code, players, isHost) {
@@ -383,7 +383,7 @@
 
         socket.on('room:created', ({ code, players, isHost, phase }) => {
             if (phase === 'ANSWER') {
-                resetAnswerForm();
+                prepareAnswerScreen();
                 showAnswerScreen();
                 return;
             }
@@ -392,7 +392,7 @@
 
         socket.on('room:joined', ({ code, players, isHost, phase }) => {
             if (phase === 'ANSWER') {
-                resetAnswerForm();
+                prepareAnswerScreen();
                 showAnswerScreen();
                 return;
             }
@@ -409,7 +409,7 @@
 
         socket.on('game:phase', ({ phase }) => {
             if (phase === 'ANSWER') {
-                resetAnswerForm();
+                prepareAnswerScreen();
                 showAnswerScreen();
             }
         });
