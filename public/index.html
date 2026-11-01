@@ -65,7 +65,7 @@
 
         <div id="screenDiscuss" class="screen hidden">
             <h2 class="screen-title">דיון</h2>
-            <p id="discussIntro">זה הזמן לדון ולשאול את שאר השחקנים שאלות — כדי לגלות מי המתחזה/ים.</p>
+            <p id="discussIntro">זה הזמן לדון ולשאול את שאר השחקנים שאלות — כדי לגלות מי המתחזה.</p>
             <ul id="discussList" class="list-cards"></ul>
             <button type="button" id="beginVoteBtn" class="btn btn-accent hidden" onclick="beginVote()">המשך להצבעה</button>
             <p id="discussHint" class="hint">ממתינים למארח להמשיך להצבעה…</p>
@@ -73,7 +73,7 @@
 
         <div id="screenVote" class="screen hidden">
             <h2 class="screen-title">הצבעה</h2>
-            <p class="lead">על מי אתם חושבים שהמתחזה? בחרו שחקן/ה:</p>
+            <p class="lead">על מי אתם חושבים שהמתחזה? בחרו שחקן:</p>
             <ul id="voteList" class="list-cards"></ul>
             <p id="voteStatus" class="hint"></p>
             <p id="voteProgress" class="hint"></p>
@@ -86,7 +86,7 @@
             <div id="revealQuestions" class="reveal-questions">
                 <p class="reveal-q-label">שאלה לשחקנים</p>
                 <p id="revealRealQuestion" class="reveal-q-text"></p>
-                <p class="reveal-q-label">שאלה למתחזה/ת</p>
+                <p class="reveal-q-label">שאלה למתחזה</p>
                 <p id="revealImposterQuestion" class="reveal-q-text imposter-q"></p>
             </div>
             <ul id="revealTallies" class="list-cards"></ul>
@@ -345,9 +345,9 @@
             const imposterNames = (data.imposters || []).map((p) => p.name);
             const imposterEl = document.getElementById('revealImposters');
             if (imposterNames.length === 1) {
-                imposterEl.textContent = `המתחזה/ת: ${imposterNames[0]}`;
+                imposterEl.textContent = `המתחזה: ${imposterNames[0]}`;
             } else if (imposterNames.length > 1) {
-                imposterEl.textContent = `המתחזים/ות: ${imposterNames.join(', ')}`;
+                imposterEl.textContent = `המתחזים: ${imposterNames.join(', ')}`;
             } else {
                 imposterEl.textContent = 'לא נמצא מתחזה';
             }
@@ -358,7 +358,7 @@
                 outcomeEl.textContent = 'הקבוצה זיהתה את המתחזה — ניצחון לשחקנים!';
                 outcomeEl.classList.add('outcome-win');
             } else {
-                outcomeEl.textContent = 'המתחזה לא זוהה במלואו — ניצחון למתחזה/ים';
+                outcomeEl.textContent = 'המתחזה לא זוהה במלואו — ניצחון למתחזה';
                 outcomeEl.classList.add('outcome-lose');
             }
 
@@ -374,7 +374,7 @@
                 if (row.isImposter) {
                     li.className = 'imposter-mark';
                 }
-                li.textContent = `${row.name}: ${row.votes} הצבעות${row.isImposter ? ' (מתחזה/ת)' : ''}`;
+                li.textContent = `${row.name}: ${row.votes} הצבעות${row.isImposter ? ' (מתחזה)' : ''}`;
                 list.appendChild(li);
             });
         }
