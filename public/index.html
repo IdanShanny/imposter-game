@@ -83,6 +83,12 @@
             <h2 class="screen-title">חשיפה</h2>
             <p id="revealImposters"></p>
             <p id="revealOutcome"></p>
+            <div id="revealQuestions" class="reveal-questions">
+                <p class="reveal-q-label">שאלה לשחקנים</p>
+                <p id="revealRealQuestion" class="reveal-q-text"></p>
+                <p class="reveal-q-label">שאלה למתחזה/ת</p>
+                <p id="revealImposterQuestion" class="reveal-q-text imposter-q"></p>
+            </div>
             <ul id="revealTallies" class="list-cards"></ul>
             <button type="button" class="btn btn-primary" onclick="startNewGame()">משחק חדש</button>
         </div>
@@ -355,6 +361,11 @@
                 outcomeEl.textContent = 'המתחזה לא זוהה במלואו — ניצחון למתחזה/ים';
                 outcomeEl.classList.add('outcome-lose');
             }
+
+            document.getElementById('revealRealQuestion').textContent =
+                data.realQuestion || '—';
+            document.getElementById('revealImposterQuestion').textContent =
+                data.imposterQuestion || '—';
 
             const list = document.getElementById('revealTallies');
             list.innerHTML = '';

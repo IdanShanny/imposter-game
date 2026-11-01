@@ -8,6 +8,17 @@ const MAX_ANSWER_LENGTH = 120;
 const MIN_PLAYERS_TO_START = 3;
 const DISCONNECT_GRACE_MS = 5 * 60 * 1000;
 
+/** Same player names in a new room — avoid repeating last round / imposter */
+const lastRoundIdByRoster = new Map();
+const lastImposterNameByRoster = new Map();
+
+function rosterKey(room) {
+    return Array.from(room.players.values())
+        .map((p) => p.name.toLowerCase())
+        .sort()
+        .join('|');
+}
+
 function createPlayerId() {
     return crypto.randomUUID();
 }
@@ -123,6 +134,8 @@ function revealPayload(room) {
             : [],
         tallies,
         civiliansWin,
+        realQuestion: room.round.realQuestion,
+        imposterQuestion: room.round.imposterQuestion,
     };
 }
 
@@ -302,10 +315,44 @@ function syncGameStateToPlayer(io, room, playerId) {
     }
 }
 
+function pickImposterPlayerId(room, playerIds) {
+    const key = rosterKey(room);
+    const lastImposterName = lastImposterNameByRoster.get(key);
+    let candidates = playerIds;
+
+    if (lastImposterName && playerIds.length > 1) {
+        const filtered = playerIds.filter(
+            (id) => room.players.get(id).name.toLowerCase() !== lastImposterName
+        );
+        if (filtered.length > 0) {
+            candidates = filtered;
+        }
+    }
+
+    if (room.lastImposterPlayerId && playerIds.length > 1) {
+        const filtered = candidates.filter((id) => id !== room.lastImposterPlayerId);
+        if (filtered.length > 0) {
+            candidates = filtered;
+        }
+    }
+
+    const chosenId = candidates[crypto.randomInt(0, candidates.length)];
+    const chosenName = room.players.get(chosenId)?.name;
+    if (chosenName) {
+        lastImposterNameByRoster.set(key, chosenName.toLowerCase());
+    }
+    return chosenId;
+}
+
 function beginRound(io, room) {
-    const round = pickRandomRound();
+    const key = rosterKey(room);
+    const round = pickRandomRound(lastRoundIdByRoster.get(key));
+    lastRoundIdByRoster.set(key, round.id);
     const playerIds = Array.from(room.players.keys());
-    const imposterPlayerId = playerIds[Math.floor(Math.random() * playerIds.length)];
+    const imposterPlayerId = pickImposterPlayerId(room, playerIds);
+
+    room.lastRoundId = round.id;
+    room.lastImposterPlayerId = imposterPlayerId;
 
     room.round = {
         roundId: round.id,
@@ -404,6 +451,8 @@ function createRoom(socket, playerName) {
         phase: 'LOBBY',
         players: new Map(),
         round: null,
+        lastRoundId: null,
+        lastImposterPlayerId: null,
     };
 
     room.players.set(playerId, {
@@ -586,6 +635,7 @@ function handleDisconnect(io, socket) {
 
 function registerRoomHandlers(io, socket) {
     socket.on('room:create', ({ playerName }) => {
+        leaveRoomVoluntary(io, socket);
         const result = createRoom(socket, playerName);
         if (result.error) {
             socket.emit('room:error', { message: result.error });
@@ -597,6 +647,7 @@ function registerRoomHandlers(io, socket) {
     });
 
     socket.on('room:join', ({ code, playerName }) => {
+        leaveRoomVoluntary(io, socket);
         const result = joinRoom(socket, code, playerName);
         if (result.error) {
             socket.emit('room:error', { message: result.error });

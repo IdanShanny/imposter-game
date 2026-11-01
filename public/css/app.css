@@ -418,6 +418,40 @@ textarea {
     color: var(--red-600);
 }
 
+.reveal-questions {
+    text-align: right;
+    margin: var(--space-4) 0;
+    padding: var(--space-4);
+    background: var(--surface-soft);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+}
+
+.reveal-q-label {
+    margin: 0 0 var(--space-1);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+}
+
+.reveal-q-label:not(:first-child) {
+    margin-top: var(--space-3);
+}
+
+.reveal-q-text {
+    margin: 0;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--text);
+}
+
+.reveal-q-text.imposter-q {
+    color: var(--red-700);
+    font-weight: 500;
+}
+
 #revealTallies li.imposter-mark {
     border: 1.5px solid var(--red-500);
     background: var(--red-100);
