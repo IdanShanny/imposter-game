@@ -1,6 +1,7 @@
 const rooms = new Map();
 
 const MAX_NAME_LENGTH = 20;
+const MIN_PLAYERS_TO_START = 3;
 
 function normalizeName(name) {
     return String(name || '').trim().slice(0, MAX_NAME_LENGTH);
@@ -25,8 +26,54 @@ function playersPayload(room) {
 function broadcastPlayers(io, room) {
     io.to(room.code).emit('room:players', {
         code: room.code,
+        phase: room.phase,
         players: playersPayload(room),
+        minPlayersToStart: MIN_PLAYERS_TO_START,
     });
+}
+
+function broadcastPhase(io, room) {
+    io.to(room.code).emit('game:phase', {
+        code: room.code,
+        phase: room.phase,
+    });
+}
+
+function roomSnapshot(room, isHost) {
+    return {
+        code: room.code,
+        phase: room.phase,
+        players: playersPayload(room),
+        isHost,
+        minPlayersToStart: MIN_PLAYERS_TO_START,
+    };
+}
+
+function startGame(socket) {
+    const code = socket.data.roomCode;
+    if (!code) {
+        return { error: 'אינך בחדר' };
+    }
+
+    const room = rooms.get(code);
+    if (!room) {
+        return { error: 'חדר לא נמצא' };
+    }
+
+    if (room.hostSocketId !== socket.id) {
+        return { error: 'רק המארח יכול להתחיל את המשחק' };
+    }
+
+    if (room.phase !== 'LOBBY') {
+        return { error: 'המשחק כבר התחיל' };
+    }
+
+    if (room.players.size < MIN_PLAYERS_TO_START) {
+        return { error: `נדרשים לפחות ${MIN_PLAYERS_TO_START} שחקנים` };
+    }
+
+    room.phase = 'STARTING';
+    return { room };
 }
 
 function createRoom(socket, playerName) {
@@ -134,11 +181,7 @@ function registerRoomHandlers(io, socket) {
             return;
         }
 
-        socket.emit('room:created', {
-            code: result.room.code,
-            players: playersPayload(result.room),
-            isHost: result.isHost,
-        });
+        socket.emit('room:created', roomSnapshot(result.room, result.isHost));
         broadcastPlayers(io, result.room);
     });
 
@@ -149,12 +192,17 @@ function registerRoomHandlers(io, socket) {
             return;
         }
 
-        socket.emit('room:joined', {
-            code: result.room.code,
-            players: playersPayload(result.room),
-            isHost: result.isHost,
-        });
+        socket.emit('room:joined', roomSnapshot(result.room, result.isHost));
         broadcastPlayers(io, result.room);
+    });
+
+    socket.on('game:start', () => {
+        const result = startGame(socket);
+        if (result.error) {
+            socket.emit('room:error', { message: result.error });
+            return;
+        }
+        broadcastPhase(io, result.room);
     });
 
     socket.on('disconnect', () => {

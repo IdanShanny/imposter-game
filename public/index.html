@@ -50,6 +50,20 @@
         button:hover { background-color: #0056b3; }
         button.btn-create { background-color: #28a745; }
         button.btn-create:hover { background-color: #1e7e34; }
+        button.btn-start { background-color: #fd7e14; }
+        button.btn-start:hover:not(:disabled) { background-color: #e96b00; }
+        button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+        #startHint {
+            font-size: 13px;
+            color: #666;
+            margin-top: 8px;
+            min-height: 1.2em;
+        }
+        #screenStarting h2 { margin-bottom: 12px; }
+        #screenStarting p { color: #555; line-height: 1.5; }
         .hidden { display: none !important; }
         #formError {
             color: #dc3545;
@@ -161,6 +175,13 @@
             <p id="copyFeedback"></p>
             <p id="lobbyHint">סרוק את הקוד או שלח את הקישור כדי להצטרף</p>
             <ul id="playerList"></ul>
+            <button type="button" id="startGameBtn" class="btn-start hidden" onclick="startGame()">התחל משחק</button>
+            <p id="startHint"></p>
+        </div>
+
+        <div id="screenStarting" class="hidden">
+            <h2>המשחק מתחיל…</h2>
+            <p>המארח התחיל את המשחק. השלבים הבאים יגיעו בגרסה הבאה.</p>
         </div>
 
         <p id="serverStatus">בודק חיבור לשרת…</p>
@@ -196,6 +217,9 @@
         const socket = io();
         const realtimeEl = document.getElementById('realtimeStatus');
         const formErrorEl = document.getElementById('formError');
+        let clientIsHost = false;
+        let lobbyPlayerCount = 0;
+        const MIN_PLAYERS_TO_START = 3;
 
         socket.on('connect', () => {
             realtimeEl.textContent = 'מחובר בזמן אמת';
@@ -234,7 +258,38 @@
             });
         }
 
-        function showLobby(code, players) {
+        function updateStartControls(players, isHost) {
+            clientIsHost = isHost;
+            lobbyPlayerCount = players.length;
+            const btn = document.getElementById('startGameBtn');
+            const hint = document.getElementById('startHint');
+
+            if (!isHost) {
+                btn.classList.add('hidden');
+                hint.textContent = 'ממתינים למארח להתחיל את המשחק…';
+                return;
+            }
+
+            btn.classList.remove('hidden');
+            const canStart = players.length >= MIN_PLAYERS_TO_START;
+            btn.disabled = !canStart;
+            if (canStart) {
+                hint.textContent = 'לחץ להתחיל כשכולם מוכנים';
+            } else {
+                hint.textContent = `נדרשים לפחות ${MIN_PLAYERS_TO_START} שחקנים (${players.length}/${MIN_PLAYERS_TO_START})`;
+            }
+            hint.style.color = '#666';
+        }
+
+        function showStartingScreen() {
+            document.getElementById('screenEntry').classList.add('hidden');
+            document.getElementById('screenLobby').classList.add('hidden');
+            document.getElementById('screenStarting').classList.remove('hidden');
+            showFormError('');
+        }
+
+        function showLobby(code, players, isHost) {
+            document.getElementById('screenStarting').classList.add('hidden');
             document.getElementById('screenEntry').classList.add('hidden');
             document.getElementById('screenLobby').classList.remove('hidden');
             document.getElementById('lobbyCode').textContent = code;
@@ -251,6 +306,7 @@
                 })
                 .catch(() => {});
             renderPlayerList(players);
+            updateStartControls(players, isHost);
             showFormError('');
         }
 
@@ -274,21 +330,51 @@
             }
         }
 
-        socket.on('room:created', ({ code, players }) => {
-            showLobby(code, players);
+        socket.on('room:created', ({ code, players, isHost, phase }) => {
+            if (phase === 'STARTING') {
+                showStartingScreen();
+                return;
+            }
+            showLobby(code, players, isHost);
         });
 
-        socket.on('room:joined', ({ code, players }) => {
-            showLobby(code, players);
+        socket.on('room:joined', ({ code, players, isHost, phase }) => {
+            if (phase === 'STARTING') {
+                showStartingScreen();
+                return;
+            }
+            showLobby(code, players, isHost);
         });
 
-        socket.on('room:players', ({ players }) => {
+        socket.on('room:players', ({ players, phase }) => {
             renderPlayerList(players);
+            if (phase === 'STARTING') {
+                showStartingScreen();
+                return;
+            }
+            updateStartControls(players, clientIsHost);
+        });
+
+        socket.on('game:phase', ({ phase }) => {
+            if (phase === 'STARTING') {
+                showStartingScreen();
+            }
         });
 
         socket.on('room:error', ({ message }) => {
+            const lobbyVisible = !document.getElementById('screenLobby').classList.contains('hidden');
+            if (lobbyVisible) {
+                const hint = document.getElementById('startHint');
+                hint.textContent = message;
+                hint.style.color = '#dc3545';
+                return;
+            }
             showFormError(message);
         });
+
+        function startGame() {
+            socket.emit('game:start');
+        }
 
         function createRoom() {
             const name = getPlayerName();
