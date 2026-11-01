@@ -108,10 +108,62 @@
             color: #555;
             line-height: 1.4;
         }
+        #discussIntro {
+            font-size: 14px;
+            color: #555;
+            line-height: 1.5;
+            text-align: right;
+            margin: 0 0 12px;
+        }
         #discussHint {
             font-size: 14px;
             color: #666;
             margin-top: 12px;
+        }
+        button.btn-vote-start { background-color: #6f42c1; }
+        button.btn-vote-start:hover:not(:disabled) { background-color: #59339d; }
+        #voteList {
+            list-style: none;
+            padding: 0;
+            margin: 16px 0 0;
+            text-align: right;
+        }
+        #voteList li button {
+            margin-top: 0;
+            text-align: right;
+        }
+        #voteStatus, #voteProgress {
+            font-size: 14px;
+            margin-top: 10px;
+            min-height: 1.2em;
+        }
+        #revealImposters {
+            font-size: 20px;
+            font-weight: bold;
+            color: #dc3545;
+            margin: 16px 0;
+            line-height: 1.4;
+        }
+        #revealOutcome {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 12px;
+        }
+        #revealTallies {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            text-align: right;
+        }
+        #revealTallies li {
+            padding: 8px 12px;
+            margin: 6px 0;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        #revealTallies li.imposter-mark {
+            border: 2px solid #dc3545;
+            background: #fff5f5;
         }
         .hidden { display: none !important; }
         #formError {
@@ -244,9 +296,25 @@
 
         <div id="screenDiscuss" class="hidden">
             <h2>דיון</h2>
-            <p>קראו את התשובות ונחשו מי המתחזה</p>
+            <p id="discussIntro">זה הזמן לדון ולשאול את שאר השחקנים שאלות — כדי לגלות מי המתחזה/ים.</p>
             <ul id="discussList"></ul>
-            <p id="discussHint">שלב ההצבעה יגיע בגרסה הבאה</p>
+            <button type="button" id="beginVoteBtn" class="btn-vote-start hidden" onclick="beginVote()">המשך להצבעה</button>
+            <p id="discussHint">ממתינים למארח להמשיך להצבעה…</p>
+        </div>
+
+        <div id="screenVote" class="hidden">
+            <h2>הצבעה</h2>
+            <p>על מי אתה חושב שהמתחזה? בחר שחקן/ה:</p>
+            <ul id="voteList"></ul>
+            <p id="voteStatus"></p>
+            <p id="voteProgress"></p>
+        </div>
+
+        <div id="screenReveal" class="hidden">
+            <h2>חשיפה</h2>
+            <p id="revealImposters"></p>
+            <p id="revealOutcome"></p>
+            <ul id="revealTallies"></ul>
         </div>
 
         <p id="serverStatus">בודק חיבור לשרת…</p>
@@ -290,6 +358,9 @@
         let clientIsHost = false;
         let lobbyPlayerCount = 0;
         let cachedDiscussAnswers = [];
+        let cachedVoteTargets = [];
+        let cachedReveal = null;
+        let clientPlayerId = null;
         const MIN_PLAYERS_TO_START = 3;
 
         function loadSession() {
@@ -329,6 +400,7 @@
                     document.getElementById('username').value = playerName;
                     saveSession(code, playerName, sessionToken);
                 }
+                clientPlayerId = sessionToken;
             }
             clientIsHost = isHost;
             if (phase === 'ANSWER') {
@@ -337,8 +409,20 @@
                 return;
             }
             if (phase === 'DISCUSS') {
-                showDiscussScreen();
+                showDiscussScreen(isHost);
                 renderDiscussGrid(cachedDiscussAnswers);
+                return;
+            }
+            if (phase === 'VOTE') {
+                showVoteScreen();
+                renderVoteTargets(cachedVoteTargets);
+                return;
+            }
+            if (phase === 'REVEAL') {
+                showRevealScreen();
+                if (cachedReveal) {
+                    renderReveal(cachedReveal);
+                }
                 return;
             }
             showLobby(code, players, isHost);
@@ -423,6 +507,8 @@
             document.getElementById('screenStarting').classList.add('hidden');
             document.getElementById('screenAnswer').classList.add('hidden');
             document.getElementById('screenDiscuss').classList.add('hidden');
+            document.getElementById('screenVote').classList.add('hidden');
+            document.getElementById('screenReveal').classList.add('hidden');
         }
 
         function showStartingScreen() {
@@ -446,10 +532,80 @@
             showFormError('');
         }
 
-        function showDiscussScreen() {
+        function showDiscussScreen(isHost) {
             hideAllScreens();
             document.getElementById('screenDiscuss').classList.remove('hidden');
+            const btn = document.getElementById('beginVoteBtn');
+            const hint = document.getElementById('discussHint');
+            if (isHost) {
+                btn.classList.remove('hidden');
+                hint.textContent = 'כשסיימתם לדון, המשיכו להצבעה';
+            } else {
+                btn.classList.add('hidden');
+                hint.textContent = 'ממתינים למארח להמשיך להצבעה…';
+            }
             showFormError('');
+        }
+
+        function showVoteScreen() {
+            hideAllScreens();
+            document.getElementById('screenVote').classList.remove('hidden');
+            document.getElementById('voteStatus').textContent = '';
+            document.getElementById('voteProgress').textContent = '';
+            showFormError('');
+        }
+
+        function showRevealScreen() {
+            hideAllScreens();
+            document.getElementById('screenReveal').classList.remove('hidden');
+            showFormError('');
+        }
+
+        function renderReveal(data) {
+            const imposterNames = (data.imposters || []).map((p) => p.name);
+            const imposterEl = document.getElementById('revealImposters');
+            if (imposterNames.length === 1) {
+                imposterEl.textContent = `המתחזה/ת: ${imposterNames[0]}`;
+            } else if (imposterNames.length > 1) {
+                imposterEl.textContent = `המתחזים/ות: ${imposterNames.join(', ')}`;
+            } else {
+                imposterEl.textContent = 'לא נמצא מתחזה';
+            }
+
+            const outcomeEl = document.getElementById('revealOutcome');
+            if (data.civiliansWin) {
+                outcomeEl.textContent = 'הקבוצה זיהתה את המתחזה — ניצחון לשחקנים!';
+                outcomeEl.style.color = '#28a745';
+            } else {
+                outcomeEl.textContent = 'המתחזה לא זוהה במלואו — ניצחון למתחזה/ים';
+                outcomeEl.style.color = '#dc3545';
+            }
+
+            const list = document.getElementById('revealTallies');
+            list.innerHTML = '';
+            (data.tallies || []).forEach((row) => {
+                const li = document.createElement('li');
+                if (row.isImposter) {
+                    li.className = 'imposter-mark';
+                }
+                li.textContent = `${row.name}: ${row.votes} הצבעות${row.isImposter ? ' (מתחזה/ת)' : ''}`;
+                list.appendChild(li);
+            });
+        }
+
+        function renderVoteTargets(targets) {
+            const list = document.getElementById('voteList');
+            list.innerHTML = '';
+            targets.forEach((target) => {
+                if (target.playerId === clientPlayerId) return;
+                const li = document.createElement('li');
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = target.name;
+                btn.onclick = () => submitVoteFor(target.playerId);
+                li.appendChild(btn);
+                list.appendChild(li);
+            });
         }
 
         function renderDiscussGrid(answers) {
@@ -523,7 +679,7 @@
         });
 
         socket.on('room:players', ({ players, phase }) => {
-            if (phase === 'ANSWER' || phase === 'DISCUSS') {
+            if (phase === 'ANSWER' || phase === 'DISCUSS' || phase === 'VOTE' || phase === 'REVEAL') {
                 return;
             }
             renderPlayerList(players);
@@ -535,14 +691,46 @@
                 prepareAnswerScreen();
                 showAnswerScreen();
             } else if (phase === 'DISCUSS') {
-                showDiscussScreen();
+                showDiscussScreen(clientIsHost);
                 renderDiscussGrid(cachedDiscussAnswers);
+            } else if (phase === 'VOTE') {
+                showVoteScreen();
+                renderVoteTargets(cachedVoteTargets);
+            } else if (phase === 'REVEAL') {
+                showRevealScreen();
+                if (cachedReveal) {
+                    renderReveal(cachedReveal);
+                }
             }
         });
 
         socket.on('game:answers', ({ answers }) => {
             cachedDiscussAnswers = answers || [];
             renderDiscussGrid(cachedDiscussAnswers);
+        });
+
+        socket.on('game:voteTargets', ({ targets }) => {
+            cachedVoteTargets = targets || [];
+            renderVoteTargets(cachedVoteTargets);
+        });
+
+        socket.on('game:voteProgress', ({ submitted, total }) => {
+            document.getElementById('voteProgress').textContent =
+                `הצביעו ${submitted} מתוך ${total} שחקנים…`;
+        });
+
+        socket.on('game:voteAccepted', () => {
+            document.getElementById('voteStatus').textContent = 'ההצבעה נשלחה!';
+            document.getElementById('voteStatus').style.color = '#28a745';
+            const list = document.getElementById('voteList');
+            list.querySelectorAll('button').forEach((btn) => {
+                btn.disabled = true;
+            });
+        });
+
+        socket.on('game:reveal', (data) => {
+            cachedReveal = data;
+            renderReveal(data);
         });
 
         socket.on('game:yourPrompt', ({ question }) => {
@@ -566,8 +754,23 @@
         });
 
         socket.on('room:error', ({ message }) => {
+            const revealVisible = !document.getElementById('screenReveal').classList.contains('hidden');
+            const voteVisible = !document.getElementById('screenVote').classList.contains('hidden');
+            const discussVisible = !document.getElementById('screenDiscuss').classList.contains('hidden');
             const answerVisible = !document.getElementById('screenAnswer').classList.contains('hidden');
             const lobbyVisible = !document.getElementById('screenLobby').classList.contains('hidden');
+            if (voteVisible) {
+                const status = document.getElementById('voteStatus');
+                status.textContent = message;
+                status.style.color = '#dc3545';
+                return;
+            }
+            if (discussVisible) {
+                const hint = document.getElementById('discussHint');
+                hint.textContent = message;
+                hint.style.color = '#dc3545';
+                return;
+            }
             if (answerVisible) {
                 const status = document.getElementById('answerStatus');
                 status.textContent = message;
@@ -582,6 +785,14 @@
             }
             showFormError(message);
         });
+
+        function beginVote() {
+            socket.emit('game:beginVote');
+        }
+
+        function submitVoteFor(targetPlayerId) {
+            socket.emit('game:submitVote', { targetPlayerId });
+        }
 
         function startGame() {
             socket.emit('game:start');

@@ -80,6 +80,134 @@ function beginDiscussPhase(io, room) {
     broadcastPhase(io, room);
 }
 
+function voteTargetsPayload(room) {
+    return Array.from(room.players.values()).map((p) => ({
+        playerId: p.playerId,
+        name: p.name,
+    }));
+}
+
+function broadcastVoteProgress(io, room) {
+    io.to(room.code).emit('game:voteProgress', {
+        submitted: room.round.votes.size,
+        total: room.players.size,
+    });
+}
+
+function revealPayload(room) {
+    const imposter = room.players.get(room.round.imposterPlayerId);
+    const voteCounts = new Map();
+    for (const targetId of room.round.votes.values()) {
+        voteCounts.set(targetId, (voteCounts.get(targetId) || 0) + 1);
+    }
+
+    const tallies = voteTargetsPayload(room)
+        .map((p) => ({
+            playerId: p.playerId,
+            name: p.name,
+            votes: voteCounts.get(p.playerId) || 0,
+            isImposter: p.playerId === room.round.imposterPlayerId,
+        }))
+        .sort((a, b) => b.votes - a.votes);
+
+    const imposterVoteCount = voteCounts.get(room.round.imposterPlayerId) || 0;
+    let topVotes = 0;
+    for (const count of voteCounts.values()) {
+        if (count > topVotes) topVotes = count;
+    }
+    const civiliansWin = imposterVoteCount > 0 && imposterVoteCount === topVotes;
+
+    return {
+        imposters: imposter
+            ? [{ playerId: imposter.playerId, name: imposter.name }]
+            : [],
+        tallies,
+        civiliansWin,
+    };
+}
+
+function broadcastReveal(io, room) {
+    io.to(room.code).emit('game:reveal', revealPayload(room));
+}
+
+function beginVotePhase(io, room) {
+    room.phase = 'VOTE';
+    room.round.votes = new Map();
+    io.to(room.code).emit('game:voteTargets', { targets: voteTargetsPayload(room) });
+    broadcastVoteProgress(io, room);
+    broadcastPhase(io, room);
+}
+
+function beginRevealPhase(io, room) {
+    room.phase = 'REVEAL';
+    broadcastReveal(io, room);
+    broadcastPhase(io, room);
+}
+
+function maybeAdvanceToReveal(io, room) {
+    if (room.phase !== 'VOTE' || !room.round) return;
+    if (room.round.votes.size < room.players.size) return;
+    beginRevealPhase(io, room);
+}
+
+function beginVoteFromDiscuss(socket, io) {
+    const code = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!code || !playerId) {
+        return { error: 'אינך בחדר' };
+    }
+
+    const room = rooms.get(code);
+    if (!room?.round) {
+        return { error: 'אין סיבוב פעיל' };
+    }
+
+    if (room.hostPlayerId !== playerId) {
+        return { error: 'רק המארח יכול להתחיל הצבעה' };
+    }
+
+    if (room.phase !== 'DISCUSS') {
+        return { error: 'לא בשלב דיון' };
+    }
+
+    beginVotePhase(io, room);
+    return { ok: true };
+}
+
+function submitVote(socket, io, targetPlayerId) {
+    const code = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!code || !playerId) {
+        return { error: 'אינך בחדר' };
+    }
+
+    const room = rooms.get(code);
+    if (!room?.round) {
+        return { error: 'אין סיבוב פעיל' };
+    }
+
+    if (room.phase !== 'VOTE') {
+        return { error: 'לא בשלב הצבעה' };
+    }
+
+    if (targetPlayerId === playerId) {
+        return { error: 'לא ניתן להצביע על עצמך' };
+    }
+
+    if (!room.players.has(targetPlayerId)) {
+        return { error: 'שחקן לא תקין' };
+    }
+
+    if (room.round.votes.has(playerId)) {
+        return { error: 'כבר הצבעת' };
+    }
+
+    room.round.votes.set(playerId, targetPlayerId);
+    broadcastVoteProgress(io, room);
+    maybeAdvanceToReveal(io, room);
+    return { ok: true };
+}
+
 function maybeAdvanceToDiscuss(io, room) {
     if (room.phase !== 'ANSWER' || !room.round) return;
     if (room.round.answers.size < room.players.size) return;
@@ -158,6 +286,19 @@ function syncGameStateToPlayer(io, room, playerId) {
     } else if (room.phase === 'DISCUSS' && room.round) {
         playerSocket.emit('game:answers', { answers: discussAnswersPayload(room) });
         playerSocket.emit('game:phase', { code: room.code, phase: room.phase });
+    } else if (room.phase === 'VOTE' && room.round) {
+        playerSocket.emit('game:voteTargets', { targets: voteTargetsPayload(room) });
+        playerSocket.emit('game:voteProgress', {
+            submitted: room.round.votes.size,
+            total: room.players.size,
+        });
+        if (room.round.votes.has(playerId)) {
+            playerSocket.emit('game:voteAccepted');
+        }
+        playerSocket.emit('game:phase', { code: room.code, phase: room.phase });
+    } else if (room.phase === 'REVEAL' && room.round) {
+        playerSocket.emit('game:reveal', revealPayload(room));
+        playerSocket.emit('game:phase', { code: room.code, phase: room.phase });
     }
 }
 
@@ -172,6 +313,7 @@ function beginRound(io, room) {
         realQuestion: round.realQuestion,
         imposterQuestion: round.imposterQuestion,
         answers: new Map(),
+        votes: new Map(),
     };
     room.phase = 'ANSWER';
 
@@ -356,8 +498,8 @@ function removePlayerFromRoom(io, room, playerId) {
 
     room.players.delete(playerId);
 
-    if (room.round?.answers.has(playerId)) {
-        room.round.answers.delete(playerId);
+    if (room.round?.votes.has(playerId)) {
+        room.round.votes.delete(playerId);
     }
 
     if (room.players.size === 0) {
@@ -378,6 +520,10 @@ function removePlayerFromRoom(io, room, playerId) {
     broadcastPlayers(io, room);
     if (room.round && room.phase === 'ANSWER') {
         broadcastAnswerProgress(io, room);
+    }
+    if (room.round && room.phase === 'VOTE') {
+        broadcastVoteProgress(io, room);
+        maybeAdvanceToReveal(io, room);
     }
 }
 
@@ -458,6 +604,22 @@ function registerRoomHandlers(io, socket) {
             return;
         }
         socket.emit('game:answerAccepted');
+    });
+
+    socket.on('game:beginVote', () => {
+        const result = beginVoteFromDiscuss(socket, io);
+        if (result.error) {
+            socket.emit('room:error', { message: result.error });
+        }
+    });
+
+    socket.on('game:submitVote', ({ targetPlayerId }) => {
+        const result = submitVote(socket, io, targetPlayerId);
+        if (result.error) {
+            socket.emit('room:error', { message: result.error });
+            return;
+        }
+        socket.emit('game:voteAccepted');
     });
 
     socket.on('disconnect', () => {
