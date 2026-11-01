@@ -245,24 +245,86 @@
             document.getElementById('roomCode').value = codeFromUrl.replace(/\D/g, '').slice(0, 5);
         }
 
-        const socket = io();
+        const socket = io({
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelayMax: 5000,
+        });
+        const SESSION_KEY = 'imposterGameSession';
         const realtimeEl = document.getElementById('realtimeStatus');
         const formErrorEl = document.getElementById('formError');
         let clientIsHost = false;
         let lobbyPlayerCount = 0;
         const MIN_PLAYERS_TO_START = 3;
 
+        function loadSession() {
+            try {
+                const raw = sessionStorage.getItem(SESSION_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch {
+                return null;
+            }
+        }
+
+        function saveSession(code, playerName, sessionToken) {
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+                code,
+                playerName,
+                sessionToken,
+            }));
+        }
+
+        function tryRejoinSession() {
+            const session = loadSession();
+            if (!session?.code || !session.playerName || !session.sessionToken) return;
+            document.getElementById('username').value = session.playerName;
+            document.getElementById('roomCode').value = session.code;
+            socket.emit('room:rejoin', {
+                code: session.code,
+                playerName: session.playerName,
+                sessionToken: session.sessionToken,
+            });
+        }
+
+        function applyRoomState({ code, players, isHost, phase, sessionToken }) {
+            if (sessionToken) {
+                const me = players?.find((p) => p.id === sessionToken);
+                const playerName = me?.name || getPlayerName() || loadSession()?.playerName;
+                if (playerName) {
+                    document.getElementById('username').value = playerName;
+                    saveSession(code, playerName, sessionToken);
+                }
+            }
+            clientIsHost = isHost;
+            if (phase === 'ANSWER') {
+                prepareAnswerScreen();
+                showAnswerScreen();
+                return;
+            }
+            showLobby(code, players, isHost);
+        }
+
         socket.on('connect', () => {
             realtimeEl.textContent = 'מחובר בזמן אמת';
             realtimeEl.className = 'ok';
+            tryRejoinSession();
         });
         socket.on('disconnect', () => {
+            if (socket.active) {
+                realtimeEl.textContent = 'מתחבר מחדש…';
+                realtimeEl.className = 'pending';
+                return;
+            }
             realtimeEl.textContent = 'מנותק מהשרת';
             realtimeEl.className = 'err';
         });
         socket.io.on('reconnect_attempt', () => {
             realtimeEl.textContent = 'מתחבר מחדש…';
             realtimeEl.className = 'pending';
+        });
+        socket.io.on('reconnect', () => {
+            realtimeEl.textContent = 'מחובר בזמן אמת';
+            realtimeEl.className = 'ok';
         });
 
         function getPlayerName() {
@@ -285,6 +347,9 @@
                     li.appendChild(badge);
                 }
                 li.appendChild(document.createTextNode(player.name));
+                if (player.connected === false) {
+                    li.appendChild(document.createTextNode(' (מנותק זמנית)'));
+                }
                 list.appendChild(li);
             });
         }
@@ -381,22 +446,16 @@
             }
         }
 
-        socket.on('room:created', ({ code, players, isHost, phase }) => {
-            if (phase === 'ANSWER') {
-                prepareAnswerScreen();
-                showAnswerScreen();
-                return;
-            }
-            showLobby(code, players, isHost);
+        socket.on('room:created', (payload) => {
+            applyRoomState(payload);
         });
 
-        socket.on('room:joined', ({ code, players, isHost, phase }) => {
-            if (phase === 'ANSWER') {
-                prepareAnswerScreen();
-                showAnswerScreen();
-                return;
-            }
-            showLobby(code, players, isHost);
+        socket.on('room:joined', (payload) => {
+            applyRoomState(payload);
+        });
+
+        socket.on('room:restored', (payload) => {
+            applyRoomState(payload);
         });
 
         socket.on('room:players', ({ players, phase }) => {
@@ -468,6 +527,7 @@
                 return;
             }
             showFormError('');
+            sessionStorage.removeItem(SESSION_KEY);
             socket.emit('room:create', { playerName: name });
         }
 
@@ -483,6 +543,7 @@
                 return;
             }
             showFormError('');
+            sessionStorage.removeItem(SESSION_KEY);
             socket.emit('room:join', { code, playerName: name });
         }
     </script>

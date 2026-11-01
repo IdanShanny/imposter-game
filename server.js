@@ -8,10 +8,13 @@ app.set('trust proxy', 1);
 const { registerRoomHandlers } = require('./game/rooms');
 
 const PORT = process.env.PORT || 3000;
-const VERSION = '0.7.1';
+const VERSION = '0.7.2';
 
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    pingTimeout: 60000,
+    pingInterval: 25000,
+});
 
 io.on('connection', (socket) => {
     console.log(`חיבור Socket.io: ${socket.id}`);
