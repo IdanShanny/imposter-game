@@ -86,6 +86,39 @@
             color: #666;
             margin-top: 8px;
         }
+        #lobbyQr {
+            display: block;
+            margin: 12px auto;
+            width: 180px;
+            height: 180px;
+            border-radius: 8px;
+        }
+        .join-link-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            align-items: stretch;
+        }
+        .join-link-row input {
+            margin: 0;
+            font-size: 12px;
+            flex: 1;
+            min-width: 0;
+        }
+        button.btn-copy {
+            width: auto;
+            margin-top: 0;
+            padding: 10px 14px;
+            white-space: nowrap;
+            background-color: #6c757d;
+        }
+        button.btn-copy:hover { background-color: #545b62; }
+        #copyFeedback {
+            font-size: 13px;
+            color: #28a745;
+            min-height: 1.2em;
+            margin-top: 6px;
+        }
         #serverStatus {
             margin-top: 16px;
             font-size: 14px;
@@ -120,7 +153,13 @@
             <h2>לובי</h2>
             <p>קוד החדר:</p>
             <div id="lobbyCode"></div>
-            <p id="lobbyHint">שתף את הקוד עם החברים כדי שיוכלו להצטרף</p>
+            <img id="lobbyQr" alt="QR code להצטרפות לחדר" width="180" height="180">
+            <div class="join-link-row">
+                <input type="text" id="joinLinkInput" readonly aria-label="קישור להצטרפות">
+                <button type="button" class="btn-copy" onclick="copyJoinLink()">העתק</button>
+            </div>
+            <p id="copyFeedback"></p>
+            <p id="lobbyHint">סרוק את הקוד או שלח את הקישור כדי להצטרף</p>
             <ul id="playerList"></ul>
         </div>
 
@@ -199,8 +238,40 @@
             document.getElementById('screenEntry').classList.add('hidden');
             document.getElementById('screenLobby').classList.remove('hidden');
             document.getElementById('lobbyCode').textContent = code;
+            document.getElementById('lobbyQr').src = `/api/qr.png?code=${encodeURIComponent(code)}`;
+            document.getElementById('copyFeedback').textContent = '';
+            const joinUrl = `${window.location.origin}/?code=${encodeURIComponent(code)}`;
+            document.getElementById('joinLinkInput').value = joinUrl;
+            fetch(`/api/join-url?code=${encodeURIComponent(code)}`)
+                .then((res) => (res.ok ? res.json() : null))
+                .then((data) => {
+                    if (data?.url) {
+                        document.getElementById('joinLinkInput').value = data.url;
+                    }
+                })
+                .catch(() => {});
             renderPlayerList(players);
             showFormError('');
+        }
+
+        async function copyJoinLink() {
+            const input = document.getElementById('joinLinkInput');
+            const feedback = document.getElementById('copyFeedback');
+            const url = input.value;
+            if (!url) return;
+            try {
+                await navigator.clipboard.writeText(url);
+                feedback.textContent = 'הקישור הועתק!';
+            } catch {
+                input.focus();
+                input.select();
+                try {
+                    document.execCommand('copy');
+                    feedback.textContent = 'הקישור הועתק!';
+                } catch {
+                    feedback.textContent = 'לא ניתן להעתיק — העתק ידנית';
+                }
+            }
         }
 
         socket.on('room:created', ({ code, players }) => {
