@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>משחק המתחזה</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 300px;
+        }
+        h1 { color: #333; font-size: 24px; margin-bottom: 20px; }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>משחק המתחזה 🕵️‍♂️</h1>
+        <input type="text" id="username" placeholder="הכנס את שמך...">
+        <input type="text" id="roomCode" placeholder="קוד חדר (5 ספרות)">
+        <button onclick="joinGame()">הצטרף לחדר</button>
+        <button style="background-color: #28a745;">צור חדר חדש</button>
+    </div>
+
+    <script>
+        function joinGame() {
+            const name = document.getElementById('username').value;
+            const code = document.getElementById('roomCode').value;
+            if(!name || !code) {
+                alert('נא למלא שם וקוד חדר!');
+                return;
+            }
+            alert(`מצטרף לחדר ${code} בתור ${name}... (בקרוב!)`);
+        }
+    </script>
+
+</body>
+</html>
