@@ -84,6 +84,7 @@
             <p id="revealImposters"></p>
             <p id="revealOutcome"></p>
             <ul id="revealTallies" class="list-cards"></ul>
+            <button type="button" class="btn btn-primary" onclick="startNewGame()">משחק חדש</button>
         </div>
 
         <footer class="status-bar">
@@ -562,6 +563,24 @@
             }
             showFormError(message);
         });
+
+        function resetToEntryScreen() {
+            hideAllScreens();
+            document.getElementById('screenEntry').classList.remove('hidden');
+            document.getElementById('roomCode').value = '';
+            showFormError('');
+            clientIsHost = false;
+            clientPlayerId = null;
+            cachedDiscussAnswers = [];
+            cachedVoteTargets = [];
+            cachedReveal = null;
+        }
+
+        function startNewGame() {
+            sessionStorage.removeItem(SESSION_KEY);
+            socket.emit('room:leave');
+            resetToEntryScreen();
+        }
 
         function beginVote() {
             socket.emit('game:beginVote');

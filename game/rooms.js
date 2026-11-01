@@ -498,6 +498,10 @@ function removePlayerFromRoom(io, room, playerId) {
 
     room.players.delete(playerId);
 
+    if (room.round?.answers.has(playerId)) {
+        room.round.answers.delete(playerId);
+    }
+
     if (room.round?.votes.has(playerId)) {
         room.round.votes.delete(playerId);
     }
@@ -525,6 +529,31 @@ function removePlayerFromRoom(io, room, playerId) {
         broadcastVoteProgress(io, room);
         maybeAdvanceToReveal(io, room);
     }
+}
+
+function leaveRoomVoluntary(io, socket) {
+    const code = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!code || !playerId) {
+        return { ok: true };
+    }
+
+    const room = rooms.get(code);
+    const player = room?.players.get(playerId);
+    if (player?.disconnectTimer) {
+        clearTimeout(player.disconnectTimer);
+        player.disconnectTimer = null;
+    }
+
+    delete socket.data.roomCode;
+    delete socket.data.playerId;
+    socket.leave(code);
+
+    if (room) {
+        removePlayerFromRoom(io, room, playerId);
+    }
+
+    return { ok: true };
 }
 
 function handleDisconnect(io, socket) {
@@ -620,6 +649,10 @@ function registerRoomHandlers(io, socket) {
             return;
         }
         socket.emit('game:voteAccepted');
+    });
+
+    socket.on('room:leave', () => {
+        leaveRoomVoluntary(io, socket);
     });
 
     socket.on('disconnect', () => {
