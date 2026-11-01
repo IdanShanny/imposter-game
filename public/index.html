@@ -4,321 +4,92 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>משחק המתחזה</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f0f2f5;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 16px;
-            box-sizing: border-box;
-        }
-        .card {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            text-align: center;
-            width: 100%;
-            max-width: 320px;
-        }
-        h1 { color: #333; font-size: 24px; margin-bottom: 20px; }
-        h2 { color: #333; font-size: 20px; margin: 0 0 8px; }
-        input {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            box-sizing: border-box;
-            font-size: 16px;
-        }
-        button {
-            width: 100%;
-            padding: 10px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        button:hover { background-color: #0056b3; }
-        button.btn-create { background-color: #28a745; }
-        button.btn-create:hover { background-color: #1e7e34; }
-        button.btn-start { background-color: #fd7e14; }
-        button.btn-start:hover:not(:disabled) { background-color: #e96b00; }
-        button:disabled {
-            opacity: 0.55;
-            cursor: not-allowed;
-        }
-        #startHint {
-            font-size: 13px;
-            color: #666;
-            margin-top: 8px;
-            min-height: 1.2em;
-        }
-        #screenStarting h2 { margin-bottom: 12px; }
-        #screenStarting p { color: #555; line-height: 1.5; }
-        #promptText {
-            font-size: 18px;
-            color: #333;
-            line-height: 1.5;
-            margin: 16px 0;
-            text-align: right;
-        }
-        #answerInput {
-            min-height: 72px;
-            resize: vertical;
-        }
-        #answerStatus {
-            font-size: 14px;
-            color: #666;
-            margin-top: 10px;
-            min-height: 1.2em;
-        }
-        #answerProgress {
-            font-size: 14px;
-            color: #007bff;
-            margin-top: 8px;
-        }
-        #discussList {
-            list-style: none;
-            padding: 0;
-            margin: 16px 0 0;
-            text-align: right;
-        }
-        #discussList li {
-            padding: 12px;
-            margin: 8px 0;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border: 1px solid #e9ecef;
-        }
-        .discuss-name {
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 6px;
-        }
-        .discuss-text {
-            color: #555;
-            line-height: 1.4;
-        }
-        #discussIntro {
-            font-size: 14px;
-            color: #555;
-            line-height: 1.5;
-            text-align: right;
-            margin: 0 0 12px;
-        }
-        #discussHint {
-            font-size: 14px;
-            color: #666;
-            margin-top: 12px;
-        }
-        button.btn-vote-start { background-color: #6f42c1; }
-        button.btn-vote-start:hover:not(:disabled) { background-color: #59339d; }
-        #voteList {
-            list-style: none;
-            padding: 0;
-            margin: 16px 0 0;
-            text-align: right;
-        }
-        #voteList li button {
-            margin-top: 0;
-            text-align: right;
-        }
-        #voteStatus, #voteProgress {
-            font-size: 14px;
-            margin-top: 10px;
-            min-height: 1.2em;
-        }
-        #revealImposters {
-            font-size: 20px;
-            font-weight: bold;
-            color: #dc3545;
-            margin: 16px 0;
-            line-height: 1.4;
-        }
-        #revealOutcome {
-            font-size: 16px;
-            color: #333;
-            margin-bottom: 12px;
-        }
-        #revealTallies {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            text-align: right;
-        }
-        #revealTallies li {
-            padding: 8px 12px;
-            margin: 6px 0;
-            background: #f8f9fa;
-            border-radius: 6px;
-        }
-        #revealTallies li.imposter-mark {
-            border: 2px solid #dc3545;
-            background: #fff5f5;
-        }
-        .hidden { display: none !important; }
-        #formError {
-            color: #dc3545;
-            font-size: 14px;
-            margin-top: 8px;
-            min-height: 1.2em;
-        }
-        #lobbyCode {
-            font-size: 32px;
-            letter-spacing: 6px;
-            font-weight: bold;
-            color: #007bff;
-            margin: 12px 0;
-        }
-        #playerList {
-            list-style: none;
-            padding: 0;
-            margin: 16px 0 0;
-            text-align: right;
-        }
-        #playerList li {
-            padding: 8px 12px;
-            margin: 6px 0;
-            background: #f8f9fa;
-            border-radius: 6px;
-        }
-        .host-badge {
-            font-size: 12px;
-            color: #28a745;
-            margin-right: 6px;
-        }
-        #lobbyHint {
-            font-size: 14px;
-            color: #666;
-            margin-top: 8px;
-        }
-        #lobbyQr {
-            display: block;
-            margin: 12px auto;
-            width: 180px;
-            height: 180px;
-            border-radius: 8px;
-        }
-        .join-link-row {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-            align-items: stretch;
-        }
-        .join-link-row input {
-            margin: 0;
-            font-size: 12px;
-            flex: 1;
-            min-width: 0;
-        }
-        button.btn-copy {
-            width: auto;
-            margin-top: 0;
-            padding: 10px 14px;
-            white-space: nowrap;
-            background-color: #6c757d;
-        }
-        button.btn-copy:hover { background-color: #545b62; }
-        #copyFeedback {
-            font-size: 13px;
-            color: #28a745;
-            min-height: 1.2em;
-            margin-top: 6px;
-        }
-        #serverStatus {
-            margin-top: 16px;
-            font-size: 14px;
-            color: #666;
-        }
-        #serverStatus.ok { color: #28a745; }
-        #serverStatus.err { color: #dc3545; }
-        #realtimeStatus {
-            margin-top: 8px;
-            font-size: 14px;
-            color: #666;
-        }
-        #realtimeStatus.ok { color: #28a745; }
-        #realtimeStatus.pending { color: #666; }
-        #realtimeStatus.err { color: #dc3545; }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
 
-    <div class="card">
-        <h1>משחק המתחזה 🕵️‍♂️</h1>
+    <div class="app-card">
+        <header class="app-header">
+            <h1 class="app-title">משחק המתחזה</h1>
+            <p class="app-tagline">גלו מי מתחזה — משחק קצר לחברים</p>
+        </header>
 
-        <div id="screenEntry">
-            <input type="text" id="username" placeholder="הכנס את שמך..." autocomplete="nickname">
-            <input type="text" id="roomCode" placeholder="קוד חדר (5 ספרות)" inputmode="numeric" maxlength="5">
-            <button type="button" onclick="joinGame()">הצטרף לחדר</button>
-            <button type="button" class="btn-create" onclick="createRoom()">צור חדר חדש</button>
+        <div id="screenEntry" class="screen">
+            <label class="label" for="username">שם מלא</label>
+            <div class="field-group">
+                <input type="text" id="username" placeholder="איך קוראים לך?" autocomplete="nickname">
+            </div>
+            <label class="label" for="roomCode">קוד חדר</label>
+            <div class="field-group">
+                <input type="text" id="roomCode" placeholder="חמש ספרות" inputmode="numeric" maxlength="5">
+            </div>
+            <button type="button" class="btn btn-primary" onclick="joinGame()">הצטרף לחדר</button>
+            <button type="button" class="btn btn-secondary" onclick="createRoom()">צור חדר חדש</button>
             <p id="formError"></p>
         </div>
 
-        <div id="screenLobby" class="hidden">
-            <h2>לובי</h2>
-            <p>קוד החדר:</p>
+        <div id="screenLobby" class="screen hidden">
+            <h2 class="screen-title">לובי</h2>
+            <p class="label">קוד החדר</p>
             <div id="lobbyCode"></div>
-            <img id="lobbyQr" alt="QR code להצטרפות לחדר" width="180" height="180">
+            <img id="lobbyQr" alt="QR code להצטרפות לחדר" width="168" height="168">
             <div class="join-link-row">
                 <input type="text" id="joinLinkInput" readonly aria-label="קישור להצטרפות">
-                <button type="button" class="btn-copy" onclick="copyJoinLink()">העתק</button>
+                <button type="button" class="btn btn-ghost btn-inline" onclick="copyJoinLink()">העתק</button>
             </div>
-            <p id="copyFeedback"></p>
-            <p id="lobbyHint">סרוק את הקוד או שלח את הקישור כדי להצטרף</p>
-            <ul id="playerList"></ul>
-            <button type="button" id="startGameBtn" class="btn-start hidden" onclick="startGame()">התחל משחק</button>
-            <p id="startHint"></p>
+            <p id="copyFeedback" class="hint"></p>
+            <p id="lobbyHint" class="hint">סרקו את הקוד או שתפו את הקישור</p>
+            <hr class="divider">
+            <p class="label label-players">שחקנים בחדר</p>
+            <ul id="playerList" class="list-cards"></ul>
+            <button type="button" id="startGameBtn" class="btn btn-accent hidden" onclick="startGame()">התחל משחק</button>
+            <p id="startHint" class="hint"></p>
         </div>
 
-        <div id="screenStarting" class="hidden">
-            <h2>המשחק מתחיל…</h2>
-            <p>טוען שאלה…</p>
+        <div id="screenStarting" class="screen hidden">
+            <h2 class="screen-title">המשחק מתחיל</h2>
+            <p class="lead">טוען שאלה…</p>
         </div>
 
-        <div id="screenAnswer" class="hidden">
-            <h2>השאלה שלך</h2>
+        <div id="screenAnswer" class="screen hidden">
+            <h2 class="screen-title">השאלה שלך</h2>
             <p id="promptText">טוען…</p>
-            <textarea id="answerInput" rows="3" placeholder="כתוב תשובה קצרה…"></textarea>
-            <button type="button" id="submitAnswerBtn" onclick="submitAnswer()">שלח תשובה</button>
-            <p id="answerStatus"></p>
-            <p id="answerProgress"></p>
+            <textarea id="answerInput" rows="3" placeholder="תשובה קצרה…"></textarea>
+            <button type="button" id="submitAnswerBtn" class="btn btn-primary" onclick="submitAnswer()">שלח תשובה</button>
+            <p id="answerStatus" class="hint"></p>
+            <p id="answerProgress" class="hint"></p>
         </div>
 
-        <div id="screenDiscuss" class="hidden">
-            <h2>דיון</h2>
+        <div id="screenDiscuss" class="screen hidden">
+            <h2 class="screen-title">דיון</h2>
             <p id="discussIntro">זה הזמן לדון ולשאול את שאר השחקנים שאלות — כדי לגלות מי המתחזה/ים.</p>
-            <ul id="discussList"></ul>
-            <button type="button" id="beginVoteBtn" class="btn-vote-start hidden" onclick="beginVote()">המשך להצבעה</button>
-            <p id="discussHint">ממתינים למארח להמשיך להצבעה…</p>
+            <ul id="discussList" class="list-cards"></ul>
+            <button type="button" id="beginVoteBtn" class="btn btn-accent hidden" onclick="beginVote()">המשך להצבעה</button>
+            <p id="discussHint" class="hint">ממתינים למארח להמשיך להצבעה…</p>
         </div>
 
-        <div id="screenVote" class="hidden">
-            <h2>הצבעה</h2>
-            <p>על מי אתה חושב שהמתחזה? בחר שחקן/ה:</p>
-            <ul id="voteList"></ul>
-            <p id="voteStatus"></p>
-            <p id="voteProgress"></p>
+        <div id="screenVote" class="screen hidden">
+            <h2 class="screen-title">הצבעה</h2>
+            <p class="lead">על מי אתם חושבים שהמתחזה? בחרו שחקן/ה:</p>
+            <ul id="voteList" class="list-cards"></ul>
+            <p id="voteStatus" class="hint"></p>
+            <p id="voteProgress" class="hint"></p>
         </div>
 
-        <div id="screenReveal" class="hidden">
-            <h2>חשיפה</h2>
+        <div id="screenReveal" class="screen hidden">
+            <h2 class="screen-title">חשיפה</h2>
             <p id="revealImposters"></p>
             <p id="revealOutcome"></p>
-            <ul id="revealTallies"></ul>
+            <ul id="revealTallies" class="list-cards"></ul>
         </div>
 
-        <p id="serverStatus">בודק חיבור לשרת…</p>
-        <p id="realtimeStatus" class="pending">מתחבר בזמן אמת…</p>
+        <footer class="status-bar">
+            <p id="serverStatus">בודק חיבור לשרת…</p>
+            <p id="realtimeStatus" class="pending">מתחבר בזמן אמת…</p>
+        </footer>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -487,6 +258,7 @@
             if (!isHost) {
                 btn.classList.add('hidden');
                 hint.textContent = 'ממתינים למארח להתחיל את המשחק…';
+                hint.className = 'hint';
                 return;
             }
 
@@ -498,7 +270,7 @@
             } else {
                 hint.textContent = `נדרשים לפחות ${MIN_PLAYERS_TO_START} שחקנים (${players.length}/${MIN_PLAYERS_TO_START})`;
             }
-            hint.style.color = '#666';
+            hint.className = 'hint';
         }
 
         function hideAllScreens() {
@@ -544,6 +316,7 @@
                 btn.classList.add('hidden');
                 hint.textContent = 'ממתינים למארח להמשיך להצבעה…';
             }
+            hint.className = 'hint';
             showFormError('');
         }
 
@@ -573,12 +346,13 @@
             }
 
             const outcomeEl = document.getElementById('revealOutcome');
+            outcomeEl.classList.remove('outcome-win', 'outcome-lose');
             if (data.civiliansWin) {
                 outcomeEl.textContent = 'הקבוצה זיהתה את המתחזה — ניצחון לשחקנים!';
-                outcomeEl.style.color = '#28a745';
+                outcomeEl.classList.add('outcome-win');
             } else {
                 outcomeEl.textContent = 'המתחזה לא זוהה במלואו — ניצחון למתחזה/ים';
-                outcomeEl.style.color = '#dc3545';
+                outcomeEl.classList.add('outcome-lose');
             }
 
             const list = document.getElementById('revealTallies');
@@ -601,6 +375,7 @@
                 const li = document.createElement('li');
                 const btn = document.createElement('button');
                 btn.type = 'button';
+                btn.className = 'btn btn-secondary';
                 btn.textContent = target.name;
                 btn.onclick = () => submitVoteFor(target.playerId);
                 li.appendChild(btn);
@@ -654,12 +429,14 @@
             try {
                 await navigator.clipboard.writeText(url);
                 feedback.textContent = 'הקישור הועתק!';
+                feedback.classList.add('status-ok');
             } catch {
                 input.focus();
                 input.select();
                 try {
                     document.execCommand('copy');
                     feedback.textContent = 'הקישור הועתק!';
+                feedback.classList.add('status-ok');
                 } catch {
                     feedback.textContent = 'לא ניתן להעתיק — העתק ידנית';
                 }
@@ -721,7 +498,7 @@
 
         socket.on('game:voteAccepted', () => {
             document.getElementById('voteStatus').textContent = 'ההצבעה נשלחה!';
-            document.getElementById('voteStatus').style.color = '#28a745';
+            document.getElementById('voteStatus').className = 'hint status-ok';
             const list = document.getElementById('voteList');
             list.querySelectorAll('button').forEach((btn) => {
                 btn.disabled = true;
@@ -741,7 +518,7 @@
             document.getElementById('answerInput').disabled = true;
             document.getElementById('submitAnswerBtn').disabled = true;
             document.getElementById('answerStatus').textContent = 'התשובה נשלחה!';
-            document.getElementById('answerStatus').style.color = '#28a745';
+            document.getElementById('answerStatus').className = 'hint status-ok';
         });
 
         socket.on('game:answerProgress', ({ submitted, total, allSubmitted }) => {
@@ -762,25 +539,25 @@
             if (voteVisible) {
                 const status = document.getElementById('voteStatus');
                 status.textContent = message;
-                status.style.color = '#dc3545';
+                status.className = 'hint hint-error';
                 return;
             }
             if (discussVisible) {
                 const hint = document.getElementById('discussHint');
                 hint.textContent = message;
-                hint.style.color = '#dc3545';
+                hint.className = 'hint hint-error';
                 return;
             }
             if (answerVisible) {
                 const status = document.getElementById('answerStatus');
                 status.textContent = message;
-                status.style.color = '#dc3545';
+                status.className = 'hint hint-error';
                 return;
             }
             if (lobbyVisible) {
                 const hint = document.getElementById('startHint');
                 hint.textContent = message;
-                hint.style.color = '#dc3545';
+                hint.className = 'hint hint-error';
                 return;
             }
             showFormError(message);
