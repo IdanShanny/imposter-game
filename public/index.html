@@ -11,8 +11,10 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
+            padding: 16px;
+            box-sizing: border-box;
         }
         .card {
             background: white;
@@ -20,9 +22,11 @@
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             text-align: center;
-            width: 300px;
+            width: 100%;
+            max-width: 320px;
         }
         h1 { color: #333; font-size: 24px; margin-bottom: 20px; }
+        h2 { color: #333; font-size: 20px; margin: 0 0 8px; }
         input {
             width: 100%;
             padding: 10px;
@@ -44,6 +48,44 @@
             margin-top: 10px;
         }
         button:hover { background-color: #0056b3; }
+        button.btn-create { background-color: #28a745; }
+        button.btn-create:hover { background-color: #1e7e34; }
+        .hidden { display: none !important; }
+        #formError {
+            color: #dc3545;
+            font-size: 14px;
+            margin-top: 8px;
+            min-height: 1.2em;
+        }
+        #lobbyCode {
+            font-size: 32px;
+            letter-spacing: 6px;
+            font-weight: bold;
+            color: #007bff;
+            margin: 12px 0;
+        }
+        #playerList {
+            list-style: none;
+            padding: 0;
+            margin: 16px 0 0;
+            text-align: right;
+        }
+        #playerList li {
+            padding: 8px 12px;
+            margin: 6px 0;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .host-badge {
+            font-size: 12px;
+            color: #28a745;
+            margin-right: 6px;
+        }
+        #lobbyHint {
+            font-size: 14px;
+            color: #666;
+            margin-top: 8px;
+        }
         #serverStatus {
             margin-top: 16px;
             font-size: 14px;
@@ -65,10 +107,23 @@
 
     <div class="card">
         <h1>משחק המתחזה 🕵️‍♂️</h1>
-        <input type="text" id="username" placeholder="הכנס את שמך...">
-        <input type="text" id="roomCode" placeholder="קוד חדר (5 ספרות)">
-        <button onclick="joinGame()">הצטרף לחדר</button>
-        <button style="background-color: #28a745;">צור חדר חדש</button>
+
+        <div id="screenEntry">
+            <input type="text" id="username" placeholder="הכנס את שמך..." autocomplete="nickname">
+            <input type="text" id="roomCode" placeholder="קוד חדר (5 ספרות)" inputmode="numeric" maxlength="5">
+            <button type="button" onclick="joinGame()">הצטרף לחדר</button>
+            <button type="button" class="btn-create" onclick="createRoom()">צור חדר חדש</button>
+            <p id="formError"></p>
+        </div>
+
+        <div id="screenLobby" class="hidden">
+            <h2>לובי</h2>
+            <p>קוד החדר:</p>
+            <div id="lobbyCode"></div>
+            <p id="lobbyHint">שתף את הקוד עם החברים כדי שיוכלו להצטרף</p>
+            <ul id="playerList"></ul>
+        </div>
+
         <p id="serverStatus">בודק חיבור לשרת…</p>
         <p id="realtimeStatus" class="pending">מתחבר בזמן אמת…</p>
     </div>
@@ -93,8 +148,16 @@
             }
         })();
 
+        const params = new URLSearchParams(window.location.search);
+        const codeFromUrl = params.get('code');
+        if (codeFromUrl) {
+            document.getElementById('roomCode').value = codeFromUrl.replace(/\D/g, '').slice(0, 5);
+        }
+
         const socket = io();
         const realtimeEl = document.getElementById('realtimeStatus');
+        const formErrorEl = document.getElementById('formError');
+
         socket.on('connect', () => {
             realtimeEl.textContent = 'מחובר בזמן אמת';
             realtimeEl.className = 'ok';
@@ -108,14 +171,77 @@
             realtimeEl.className = 'pending';
         });
 
-        function joinGame() {
-            const name = document.getElementById('username').value;
-            const code = document.getElementById('roomCode').value;
-            if(!name || !code) {
-                alert('נא למלא שם וקוד חדר!');
+        function getPlayerName() {
+            return document.getElementById('username').value.trim();
+        }
+
+        function showFormError(message) {
+            formErrorEl.textContent = message || '';
+        }
+
+        function renderPlayerList(players) {
+            const list = document.getElementById('playerList');
+            list.innerHTML = '';
+            players.forEach((player) => {
+                const li = document.createElement('li');
+                if (player.isHost) {
+                    const badge = document.createElement('span');
+                    badge.className = 'host-badge';
+                    badge.textContent = 'מארח';
+                    li.appendChild(badge);
+                }
+                li.appendChild(document.createTextNode(player.name));
+                list.appendChild(li);
+            });
+        }
+
+        function showLobby(code, players) {
+            document.getElementById('screenEntry').classList.add('hidden');
+            document.getElementById('screenLobby').classList.remove('hidden');
+            document.getElementById('lobbyCode').textContent = code;
+            renderPlayerList(players);
+            showFormError('');
+        }
+
+        socket.on('room:created', ({ code, players }) => {
+            showLobby(code, players);
+        });
+
+        socket.on('room:joined', ({ code, players }) => {
+            showLobby(code, players);
+        });
+
+        socket.on('room:players', ({ players }) => {
+            renderPlayerList(players);
+        });
+
+        socket.on('room:error', ({ message }) => {
+            showFormError(message);
+        });
+
+        function createRoom() {
+            const name = getPlayerName();
+            if (!name) {
+                showFormError('נא להזין שם לפני יצירת חדר');
                 return;
             }
-            alert(`מצטרף לחדר ${code} בתור ${name}... (בקרוב!)`);
+            showFormError('');
+            socket.emit('room:create', { playerName: name });
+        }
+
+        function joinGame() {
+            const name = getPlayerName();
+            const code = document.getElementById('roomCode').value.trim();
+            if (!name) {
+                showFormError('נא להזין שם');
+                return;
+            }
+            if (!/^\d{5}$/.test(code)) {
+                showFormError('קוד חדר חייב להיות 5 ספרות');
+                return;
+            }
+            showFormError('');
+            socket.emit('room:join', { code, playerName: name });
         }
     </script>
 

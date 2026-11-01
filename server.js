@@ -3,14 +3,17 @@ const express = require('express');
 const { Server } = require('socket.io');
 
 const app = express();
+const { registerRoomHandlers } = require('./game/rooms');
+
 const PORT = process.env.PORT || 3000;
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 
 const server = http.createServer(app);
 const io = new Server(server);
 
 io.on('connection', (socket) => {
     console.log(`חיבור Socket.io: ${socket.id}`);
+    registerRoomHandlers(io, socket);
     socket.on('disconnect', (reason) => {
         console.log(`ניתוק Socket.io: ${socket.id} (${reason})`);
     });
