@@ -51,6 +51,14 @@
         }
         #serverStatus.ok { color: #28a745; }
         #serverStatus.err { color: #dc3545; }
+        #realtimeStatus {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #666;
+        }
+        #realtimeStatus.ok { color: #28a745; }
+        #realtimeStatus.pending { color: #666; }
+        #realtimeStatus.err { color: #dc3545; }
     </style>
 </head>
 <body>
@@ -62,8 +70,10 @@
         <button onclick="joinGame()">הצטרף לחדר</button>
         <button style="background-color: #28a745;">צור חדר חדש</button>
         <p id="serverStatus">בודק חיבור לשרת…</p>
+        <p id="realtimeStatus" class="pending">מתחבר בזמן אמת…</p>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
         (async function checkServerHealth() {
             const el = document.getElementById('serverStatus');
@@ -82,6 +92,21 @@
                 el.className = 'err';
             }
         })();
+
+        const socket = io();
+        const realtimeEl = document.getElementById('realtimeStatus');
+        socket.on('connect', () => {
+            realtimeEl.textContent = 'מחובר בזמן אמת';
+            realtimeEl.className = 'ok';
+        });
+        socket.on('disconnect', () => {
+            realtimeEl.textContent = 'מנותק מהשרת';
+            realtimeEl.className = 'err';
+        });
+        socket.io.on('reconnect_attempt', () => {
+            realtimeEl.textContent = 'מתחבר מחדש…';
+            realtimeEl.className = 'pending';
+        });
 
         function joinGame() {
             const name = document.getElementById('username').value;
