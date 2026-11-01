@@ -53,6 +53,39 @@ function broadcastPhase(io, room) {
     });
 }
 
+function discussAnswersPayload(room) {
+    const answers = [];
+    for (const [playerId] of room.players) {
+        const entry = room.round?.answers.get(playerId);
+        if (entry) {
+            answers.push({
+                playerId,
+                name: entry.name,
+                text: entry.text,
+            });
+        }
+    }
+    return answers;
+}
+
+function broadcastDiscussAnswers(io, room) {
+    io.to(room.code).emit('game:answers', {
+        answers: discussAnswersPayload(room),
+    });
+}
+
+function beginDiscussPhase(io, room) {
+    room.phase = 'DISCUSS';
+    broadcastDiscussAnswers(io, room);
+    broadcastPhase(io, room);
+}
+
+function maybeAdvanceToDiscuss(io, room) {
+    if (room.phase !== 'ANSWER' || !room.round) return;
+    if (room.round.answers.size < room.players.size) return;
+    beginDiscussPhase(io, room);
+}
+
 function broadcastAnswerProgress(io, room) {
     const total = room.players.size;
     const submitted = room.round ? room.round.answers.size : 0;
@@ -122,6 +155,9 @@ function syncGameStateToPlayer(io, room, playerId) {
             total: room.players.size,
             allSubmitted: room.round.answers.size >= room.players.size,
         });
+    } else if (room.phase === 'DISCUSS' && room.round) {
+        playerSocket.emit('game:answers', { answers: discussAnswersPayload(room) });
+        playerSocket.emit('game:phase', { code: room.code, phase: room.phase });
     }
 }
 
@@ -208,6 +244,7 @@ function submitAnswer(socket, io, text) {
     });
 
     broadcastAnswerProgress(io, room);
+    maybeAdvanceToDiscuss(io, room);
     return { ok: true };
 }
 

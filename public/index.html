@@ -86,6 +86,33 @@
             color: #007bff;
             margin-top: 8px;
         }
+        #discussList {
+            list-style: none;
+            padding: 0;
+            margin: 16px 0 0;
+            text-align: right;
+        }
+        #discussList li {
+            padding: 12px;
+            margin: 8px 0;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        .discuss-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 6px;
+        }
+        .discuss-text {
+            color: #555;
+            line-height: 1.4;
+        }
+        #discussHint {
+            font-size: 14px;
+            color: #666;
+            margin-top: 12px;
+        }
         .hidden { display: none !important; }
         #formError {
             color: #dc3545;
@@ -215,6 +242,13 @@
             <p id="answerProgress"></p>
         </div>
 
+        <div id="screenDiscuss" class="hidden">
+            <h2>דיון</h2>
+            <p>קראו את התשובות ונחשו מי המתחזה</p>
+            <ul id="discussList"></ul>
+            <p id="discussHint">שלב ההצבעה יגיע בגרסה הבאה</p>
+        </div>
+
         <p id="serverStatus">בודק חיבור לשרת…</p>
         <p id="realtimeStatus" class="pending">מתחבר בזמן אמת…</p>
     </div>
@@ -255,6 +289,7 @@
         const formErrorEl = document.getElementById('formError');
         let clientIsHost = false;
         let lobbyPlayerCount = 0;
+        let cachedDiscussAnswers = [];
         const MIN_PLAYERS_TO_START = 3;
 
         function loadSession() {
@@ -299,6 +334,11 @@
             if (phase === 'ANSWER') {
                 prepareAnswerScreen();
                 showAnswerScreen();
+                return;
+            }
+            if (phase === 'DISCUSS') {
+                showDiscussScreen();
+                renderDiscussGrid(cachedDiscussAnswers);
                 return;
             }
             showLobby(code, players, isHost);
@@ -382,6 +422,7 @@
             document.getElementById('screenLobby').classList.add('hidden');
             document.getElementById('screenStarting').classList.add('hidden');
             document.getElementById('screenAnswer').classList.add('hidden');
+            document.getElementById('screenDiscuss').classList.add('hidden');
         }
 
         function showStartingScreen() {
@@ -403,6 +444,29 @@
             hideAllScreens();
             document.getElementById('screenAnswer').classList.remove('hidden');
             showFormError('');
+        }
+
+        function showDiscussScreen() {
+            hideAllScreens();
+            document.getElementById('screenDiscuss').classList.remove('hidden');
+            showFormError('');
+        }
+
+        function renderDiscussGrid(answers) {
+            const list = document.getElementById('discussList');
+            list.innerHTML = '';
+            answers.forEach((item) => {
+                const li = document.createElement('li');
+                const nameEl = document.createElement('div');
+                nameEl.className = 'discuss-name';
+                nameEl.textContent = item.name;
+                const textEl = document.createElement('div');
+                textEl.className = 'discuss-text';
+                textEl.textContent = item.text;
+                li.appendChild(nameEl);
+                li.appendChild(textEl);
+                list.appendChild(li);
+            });
         }
 
         function showLobby(code, players, isHost) {
@@ -459,7 +523,7 @@
         });
 
         socket.on('room:players', ({ players, phase }) => {
-            if (phase === 'ANSWER') {
+            if (phase === 'ANSWER' || phase === 'DISCUSS') {
                 return;
             }
             renderPlayerList(players);
@@ -470,7 +534,15 @@
             if (phase === 'ANSWER') {
                 prepareAnswerScreen();
                 showAnswerScreen();
+            } else if (phase === 'DISCUSS') {
+                showDiscussScreen();
+                renderDiscussGrid(cachedDiscussAnswers);
             }
+        });
+
+        socket.on('game:answers', ({ answers }) => {
+            cachedDiscussAnswers = answers || [];
+            renderDiscussGrid(cachedDiscussAnswers);
         });
 
         socket.on('game:yourPrompt', ({ question }) => {
@@ -487,7 +559,7 @@
         socket.on('game:answerProgress', ({ submitted, total, allSubmitted }) => {
             const el = document.getElementById('answerProgress');
             if (allSubmitted) {
-                el.textContent = `כל השחקנים ענו (${submitted}/${total}). שלב ההצבעה יגיע בגרסה הבאה.`;
+                el.textContent = `כל השחקנים ענו (${submitted}/${total}). עוברים לדיון…`;
             } else {
                 el.textContent = `ענו ${submitted} מתוך ${total} שחקנים…`;
             }
