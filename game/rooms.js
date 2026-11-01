@@ -1,10 +1,17 @@
+const { pickRandomRound } = require('./prompts');
+
 const rooms = new Map();
 
 const MAX_NAME_LENGTH = 20;
+const MAX_ANSWER_LENGTH = 120;
 const MIN_PLAYERS_TO_START = 3;
 
 function normalizeName(name) {
     return String(name || '').trim().slice(0, MAX_NAME_LENGTH);
+}
+
+function normalizeAnswer(text) {
+    return String(text || '').trim().slice(0, MAX_ANSWER_LENGTH);
 }
 
 function generateRoomCode() {
@@ -39,6 +46,16 @@ function broadcastPhase(io, room) {
     });
 }
 
+function broadcastAnswerProgress(io, room) {
+    const total = room.players.size;
+    const submitted = room.round ? room.round.answers.size : 0;
+    io.to(room.code).emit('game:answerProgress', {
+        submitted,
+        total,
+        allSubmitted: submitted >= total,
+    });
+}
+
 function roomSnapshot(room, isHost) {
     return {
         code: room.code,
@@ -49,7 +66,32 @@ function roomSnapshot(room, isHost) {
     };
 }
 
-function startGame(socket) {
+function sendPromptsToPlayers(io, room, round) {
+    for (const [socketId] of room.players) {
+        const isImposter = socketId === room.round.imposterSocketId;
+        const question = isImposter ? round.imposterQuestion : round.realQuestion;
+        io.to(socketId).emit('game:yourPrompt', { question });
+    }
+}
+
+function beginRound(io, room) {
+    const round = pickRandomRound();
+    const playerIds = Array.from(room.players.keys());
+    const imposterSocketId = playerIds[Math.floor(Math.random() * playerIds.length)];
+
+    room.round = {
+        roundId: round.id,
+        imposterSocketId,
+        answers: new Map(),
+    };
+    room.phase = 'ANSWER';
+
+    sendPromptsToPlayers(io, room, round);
+    broadcastPhase(io, room);
+    broadcastAnswerProgress(io, room);
+}
+
+function startGame(socket, io) {
     const code = socket.data.roomCode;
     if (!code) {
         return { error: 'אינך בחדר' };
@@ -72,8 +114,46 @@ function startGame(socket) {
         return { error: `נדרשים לפחות ${MIN_PLAYERS_TO_START} שחקנים` };
     }
 
-    room.phase = 'STARTING';
+    beginRound(io, room);
     return { room };
+}
+
+function submitAnswer(socket, io, text) {
+    const code = socket.data.roomCode;
+    if (!code) {
+        return { error: 'אינך בחדר' };
+    }
+
+    const room = rooms.get(code);
+    if (!room || !room.round) {
+        return { error: 'אין סיבוב פעיל' };
+    }
+
+    if (room.phase !== 'ANSWER') {
+        return { error: 'לא בשלב תשובות' };
+    }
+
+    const player = room.players.get(socket.id);
+    if (!player) {
+        return { error: 'שחקן לא נמצא' };
+    }
+
+    if (room.round.answers.has(socket.id)) {
+        return { error: 'כבר שלחת תשובה' };
+    }
+
+    const answerText = normalizeAnswer(text);
+    if (!answerText) {
+        return { error: 'נא להזין תשובה' };
+    }
+
+    room.round.answers.set(socket.id, {
+        name: player.name,
+        text: answerText,
+    });
+
+    broadcastAnswerProgress(io, room);
+    return { ok: true };
 }
 
 function createRoom(socket, playerName) {
@@ -88,6 +168,7 @@ function createRoom(socket, playerName) {
         hostSocketId: socket.id,
         phase: 'LOBBY',
         players: new Map(),
+        round: null,
     };
 
     room.players.set(socket.id, {
@@ -171,6 +252,9 @@ function leaveRoom(io, socket) {
     }
 
     broadcastPlayers(io, room);
+    if (room.round && room.phase === 'ANSWER') {
+        broadcastAnswerProgress(io, room);
+    }
 }
 
 function registerRoomHandlers(io, socket) {
@@ -197,12 +281,20 @@ function registerRoomHandlers(io, socket) {
     });
 
     socket.on('game:start', () => {
-        const result = startGame(socket);
+        const result = startGame(socket, io);
         if (result.error) {
             socket.emit('room:error', { message: result.error });
             return;
         }
-        broadcastPhase(io, result.room);
+    });
+
+    socket.on('game:submitAnswer', ({ text }) => {
+        const result = submitAnswer(socket, io, text);
+        if (result.error) {
+            socket.emit('room:error', { message: result.error });
+            return;
+        }
+        socket.emit('game:answerAccepted');
     });
 
     socket.on('disconnect', () => {

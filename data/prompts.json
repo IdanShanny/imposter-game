@@ -1,0 +1,14 @@
+{
+  "rounds": [
+    {
+      "id": "q1",
+      "realQuestion": "באיזה גיל למדת לקרוא?",
+      "imposterQuestion": "ציין גיל כלשהו בין 4 ל-10"
+    },
+    {
+      "id": "q2",
+      "realQuestion": "מה המאכל האהוב עליך?",
+      "imposterQuestion": "ציין שם של מאכל כלשהו"
+    }
+  ]
+}
