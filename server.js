@@ -1,6 +1,11 @@
 const express = require('express');
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+const VERSION = '0.2.0';
+
+app.get('/api/health', (req, res) => {
+    res.json({ ok: true, version: VERSION });
+});
 
 // פקודה שאומרת לשרת: כל הקבצים בתיקיית public (כמו ה-index.html) זמינים לציבור
 app.use(express.static('public'));

@@ -44,6 +44,13 @@
             margin-top: 10px;
         }
         button:hover { background-color: #0056b3; }
+        #serverStatus {
+            margin-top: 16px;
+            font-size: 14px;
+            color: #666;
+        }
+        #serverStatus.ok { color: #28a745; }
+        #serverStatus.err { color: #dc3545; }
     </style>
 </head>
 <body>
@@ -54,9 +61,28 @@
         <input type="text" id="roomCode" placeholder="קוד חדר (5 ספרות)">
         <button onclick="joinGame()">הצטרף לחדר</button>
         <button style="background-color: #28a745;">צור חדר חדש</button>
+        <p id="serverStatus">בודק חיבור לשרת…</p>
     </div>
 
     <script>
+        (async function checkServerHealth() {
+            const el = document.getElementById('serverStatus');
+            try {
+                const res = await fetch('/api/health');
+                if (!res.ok) throw new Error('bad status');
+                const data = await res.json();
+                if (data.ok) {
+                    el.textContent = `השרת פעיל (גרסה ${data.version})`;
+                    el.className = 'ok';
+                } else {
+                    throw new Error('not ok');
+                }
+            } catch {
+                el.textContent = 'לא ניתן להתחבר לשרת';
+                el.className = 'err';
+            }
+        })();
+
         function joinGame() {
             const name = document.getElementById('username').value;
             const code = document.getElementById('roomCode').value;
