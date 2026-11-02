@@ -344,9 +344,9 @@ textarea {
     overflow-y: auto;
 }
 
-.app-card:has(#screenReveal:not(.hidden)) #revealTallies {
-    max-height: min(28vh, 200px);
-    overflow-y: auto;
+.app-card:has(#screenReveal:not(.hidden)) {
+    max-height: none;
+    overflow-y: visible;
 }
 
 .list-cards li {
@@ -531,6 +531,13 @@ textarea {
 .reveal-player-name {
     font-weight: 600;
     font-size: 0.9375rem;
+    margin-bottom: var(--space-1);
+}
+
+.reveal-player-guess {
+    font-size: 0.8125rem;
+    color: var(--red-800);
+    font-weight: 500;
     margin-bottom: var(--space-1);
 }
 

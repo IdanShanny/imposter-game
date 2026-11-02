@@ -119,12 +119,17 @@ function revealPayload(room) {
     const tallies = voteTargetsPayload(room)
         .map((p) => {
             const answerEntry = room.round.answers.get(p.playerId);
+            const votedForId = room.round.votes.get(p.playerId);
+            const votedForName = votedForId
+                ? room.players.get(votedForId)?.name || '—'
+                : null;
             return {
                 playerId: p.playerId,
                 name: p.name,
                 answer: answerEntry?.text || '',
                 votes: voteCounts.get(p.playerId) || 0,
                 isImposter: p.playerId === room.round.imposterPlayerId,
+                votedForName,
             };
         })
         .sort((a, b) => b.votes - a.votes);

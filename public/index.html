@@ -370,6 +370,13 @@
                 const nameEl = document.createElement('div');
                 nameEl.className = 'reveal-player-name';
                 nameEl.textContent = row.name + (row.isImposter ? ' (מתחזה)' : '');
+                const guessEl = document.createElement('div');
+                guessEl.className = 'reveal-player-guess';
+                if (row.votedForName) {
+                    guessEl.textContent = `ניחש: ${row.votedForName}`;
+                } else {
+                    guessEl.textContent = 'לא ניחש';
+                }
                 const answerEl = document.createElement('div');
                 answerEl.className = 'reveal-player-answer';
                 answerEl.textContent = row.answer || '—';
@@ -377,6 +384,7 @@
                 votesEl.className = 'reveal-player-votes';
                 votesEl.textContent = `${row.votes} הצבעות`;
                 li.appendChild(nameEl);
+                li.appendChild(guessEl);
                 li.appendChild(answerEl);
                 li.appendChild(votesEl);
                 list.appendChild(li);
