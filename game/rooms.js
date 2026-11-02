@@ -152,15 +152,53 @@ function broadcastReveal(io, room) {
 }
 
 function broadcastPlayAgainProgress(io, room) {
+    const total = room.rematchRosterSize ?? room.players.size;
     io.to(room.code).emit('game:playAgainProgress', {
         interested: room.playAgainReady.size,
-        total: room.players.size,
+        total,
     });
+}
+
+function canStartRematch(room) {
+    if (room.phase !== 'REVEAL' || !room.rematchRosterSize) {
+        return false;
+    }
+    if (room.players.size !== room.rematchRosterSize) {
+        return false;
+    }
+    if (room.playAgainReady.size !== room.players.size) {
+        return false;
+    }
+    for (const playerId of room.players.keys()) {
+        if (!room.playAgainReady.has(playerId)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function disbandRoom(io, room, message) {
+    const code = room.code;
+    for (const player of room.players.values()) {
+        if (player.disconnectTimer) {
+            clearTimeout(player.disconnectTimer);
+            player.disconnectTimer = null;
+        }
+        if (!player.socketId) continue;
+        const playerSocket = io.sockets.sockets.get(player.socketId);
+        if (!playerSocket) continue;
+        playerSocket.emit('room:disbanded', { message });
+        delete playerSocket.data.roomCode;
+        delete playerSocket.data.playerId;
+        playerSocket.leave(code);
+    }
+    rooms.delete(code);
 }
 
 function beginRevealPhase(io, room) {
     room.phase = 'REVEAL';
     room.playAgainReady = new Set();
+    room.rematchRosterSize = room.players.size;
     broadcastReveal(io, room);
     broadcastPhase(io, room);
     broadcastPlayAgainProgress(io, room);
@@ -229,8 +267,9 @@ function requestPlayAgain(socket, io) {
     room.playAgainReady.add(playerId);
     broadcastPlayAgainProgress(io, room);
 
-    if (room.playAgainReady.size >= room.players.size) {
+    if (canStartRematch(room)) {
         room.playAgainReady.clear();
+        room.rematchRosterSize = null;
         beginRound(io, room);
     }
 
@@ -326,7 +365,7 @@ function syncGameStateToPlayer(io, room, playerId) {
         playerSocket.emit('game:reveal', revealPayload(room));
         playerSocket.emit('game:playAgainProgress', {
             interested: room.playAgainReady?.size || 0,
-            total: room.players.size,
+            total: room.rematchRosterSize ?? room.players.size,
         });
         if (room.playAgainReady?.has(playerId)) {
             playerSocket.emit('game:playAgainAccepted');
@@ -374,6 +413,7 @@ function beginRound(io, room) {
     room.lastRoundId = round.id;
     room.lastImposterPlayerId = imposterPlayerId;
     room.playAgainReady = new Set();
+    room.rematchRosterSize = null;
 
     room.round = {
         roundId: round.id,
@@ -475,6 +515,7 @@ function createRoom(socket, playerName) {
         lastRoundId: null,
         lastImposterPlayerId: null,
         playAgainReady: new Set(),
+        rematchRosterSize: null,
     };
 
     room.players.set(playerId, {
@@ -603,8 +644,20 @@ function removePlayerFromRoom(io, room, playerId) {
     if (room.round && room.phase === 'DISCUSS') {
         broadcastVoteProgress(io, room);
         maybeAdvanceToReveal(io, room);
+        return;
     }
     if (room.phase === 'REVEAL') {
+        if (
+            room.rematchRosterSize != null &&
+            room.players.size < room.rematchRosterSize
+        ) {
+            disbandRoom(
+                io,
+                room,
+                'לא כולם בחרו במשחק נוסף — חוזרים למסך הפתיחה',
+            );
+            return;
+        }
         broadcastPlayAgainProgress(io, room);
     }
 }

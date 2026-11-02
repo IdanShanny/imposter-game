@@ -494,6 +494,11 @@
             applyRoomState(payload);
         });
 
+        socket.on('room:disbanded', () => {
+            sessionStorage.removeItem(SESSION_KEY);
+            resetToEntryScreen();
+        });
+
         socket.on('room:players', ({ players, phase }) => {
             if (phase === 'ANSWER' || phase === 'DISCUSS' || phase === 'REVEAL') {
                 return;
