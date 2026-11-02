@@ -35,7 +35,7 @@
             <h2 class="screen-title">לובי</h2>
             <p class="label">קוד החדר</p>
             <div id="lobbyCode"></div>
-            <img id="lobbyQr" alt="QR code להצטרפות לחדר" width="168" height="168">
+            <img id="lobbyQr" alt="QR code להצטרפות לחדר" width="140" height="140">
             <div class="join-link-row">
                 <input type="text" id="joinLinkInput" readonly aria-label="קישור להצטרפות">
                 <button type="button" class="btn btn-ghost btn-inline" onclick="copyJoinLink()">העתק</button>
@@ -57,7 +57,7 @@
         <div id="screenAnswer" class="screen hidden">
             <h2 class="screen-title">השאלה שלך</h2>
             <p id="promptText">טוען…</p>
-            <textarea id="answerInput" rows="3" placeholder="תשובה קצרה…"></textarea>
+            <textarea id="answerInput" rows="2" placeholder="תשובה קצרה…"></textarea>
             <button type="button" id="submitAnswerBtn" class="btn btn-primary" onclick="submitAnswer()">שלח תשובה</button>
             <p id="answerStatus" class="hint"></p>
             <p id="answerProgress" class="hint"></p>
@@ -82,6 +82,7 @@
                 <p class="reveal-q-label">שאלה למתחזה</p>
                 <p id="revealImposterQuestion" class="reveal-q-text imposter-q"></p>
             </div>
+            <p class="label label-players">תשובות והצבעות</p>
             <ul id="revealTallies" class="list-cards"></ul>
             <div class="reveal-actions">
                 <button type="button" id="playAgainBtn" class="btn btn-secondary" onclick="requestPlayAgainSame()">משחק נוסף עם אותם משתתפים</button>
@@ -366,7 +367,18 @@
                 if (row.isImposter) {
                     li.className = 'imposter-mark';
                 }
-                li.textContent = `${row.name}: ${row.votes} הצבעות${row.isImposter ? ' (מתחזה)' : ''}`;
+                const nameEl = document.createElement('div');
+                nameEl.className = 'reveal-player-name';
+                nameEl.textContent = row.name + (row.isImposter ? ' (מתחזה)' : '');
+                const answerEl = document.createElement('div');
+                answerEl.className = 'reveal-player-answer';
+                answerEl.textContent = row.answer || '—';
+                const votesEl = document.createElement('div');
+                votesEl.className = 'reveal-player-votes';
+                votesEl.textContent = `${row.votes} הצבעות`;
+                li.appendChild(nameEl);
+                li.appendChild(answerEl);
+                li.appendChild(votesEl);
                 list.appendChild(li);
             });
         }
