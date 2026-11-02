@@ -87,7 +87,11 @@ function broadcastDiscussAnswers(io, room) {
 
 function beginDiscussPhase(io, room) {
     room.phase = 'DISCUSS';
+    if (room.round) {
+        room.round.votes = new Map();
+    }
     broadcastDiscussAnswers(io, room);
+    broadcastVoteProgress(io, room);
     broadcastPhase(io, room);
 }
 
@@ -143,48 +147,25 @@ function broadcastReveal(io, room) {
     io.to(room.code).emit('game:reveal', revealPayload(room));
 }
 
-function beginVotePhase(io, room) {
-    room.phase = 'VOTE';
-    room.round.votes = new Map();
-    io.to(room.code).emit('game:voteTargets', { targets: voteTargetsPayload(room) });
-    broadcastVoteProgress(io, room);
-    broadcastPhase(io, room);
+function broadcastPlayAgainProgress(io, room) {
+    io.to(room.code).emit('game:playAgainProgress', {
+        interested: room.playAgainReady.size,
+        total: room.players.size,
+    });
 }
 
 function beginRevealPhase(io, room) {
     room.phase = 'REVEAL';
+    room.playAgainReady = new Set();
     broadcastReveal(io, room);
     broadcastPhase(io, room);
+    broadcastPlayAgainProgress(io, room);
 }
 
 function maybeAdvanceToReveal(io, room) {
-    if (room.phase !== 'VOTE' || !room.round) return;
+    if (room.phase !== 'DISCUSS' || !room.round) return;
     if (room.round.votes.size < room.players.size) return;
     beginRevealPhase(io, room);
-}
-
-function beginVoteFromDiscuss(socket, io) {
-    const code = socket.data.roomCode;
-    const playerId = socket.data.playerId;
-    if (!code || !playerId) {
-        return { error: 'אינך בחדר' };
-    }
-
-    const room = rooms.get(code);
-    if (!room?.round) {
-        return { error: 'אין סיבוב פעיל' };
-    }
-
-    if (room.hostPlayerId !== playerId) {
-        return { error: 'רק המארח יכול להתחיל הצבעה' };
-    }
-
-    if (room.phase !== 'DISCUSS') {
-        return { error: 'לא בשלב דיון' };
-    }
-
-    beginVotePhase(io, room);
-    return { ok: true };
 }
 
 function submitVote(socket, io, targetPlayerId) {
@@ -199,8 +180,8 @@ function submitVote(socket, io, targetPlayerId) {
         return { error: 'אין סיבוב פעיל' };
     }
 
-    if (room.phase !== 'VOTE') {
-        return { error: 'לא בשלב הצבעה' };
+    if (room.phase !== 'DISCUSS') {
+        return { error: 'לא בשלב דיון והצבעה' };
     }
 
     if (targetPlayerId === playerId) {
@@ -218,6 +199,37 @@ function submitVote(socket, io, targetPlayerId) {
     room.round.votes.set(playerId, targetPlayerId);
     broadcastVoteProgress(io, room);
     maybeAdvanceToReveal(io, room);
+    return { ok: true };
+}
+
+function requestPlayAgain(socket, io) {
+    const code = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!code || !playerId) {
+        return { error: 'אינך בחדר' };
+    }
+
+    const room = rooms.get(code);
+    if (!room?.round) {
+        return { error: 'אין סיבוב פעיל' };
+    }
+
+    if (room.phase !== 'REVEAL') {
+        return { error: 'ניתן לבקש רק אחרי סיום הסיבוב' };
+    }
+
+    if (!room.playAgainReady) {
+        room.playAgainReady = new Set();
+    }
+
+    room.playAgainReady.add(playerId);
+    broadcastPlayAgainProgress(io, room);
+
+    if (room.playAgainReady.size >= room.players.size) {
+        room.playAgainReady.clear();
+        beginRound(io, room);
+    }
+
     return { ok: true };
 }
 
@@ -298,9 +310,6 @@ function syncGameStateToPlayer(io, room, playerId) {
         });
     } else if (room.phase === 'DISCUSS' && room.round) {
         playerSocket.emit('game:answers', { answers: discussAnswersPayload(room) });
-        playerSocket.emit('game:phase', { code: room.code, phase: room.phase });
-    } else if (room.phase === 'VOTE' && room.round) {
-        playerSocket.emit('game:voteTargets', { targets: voteTargetsPayload(room) });
         playerSocket.emit('game:voteProgress', {
             submitted: room.round.votes.size,
             total: room.players.size,
@@ -311,6 +320,13 @@ function syncGameStateToPlayer(io, room, playerId) {
         playerSocket.emit('game:phase', { code: room.code, phase: room.phase });
     } else if (room.phase === 'REVEAL' && room.round) {
         playerSocket.emit('game:reveal', revealPayload(room));
+        playerSocket.emit('game:playAgainProgress', {
+            interested: room.playAgainReady?.size || 0,
+            total: room.players.size,
+        });
+        if (room.playAgainReady?.has(playerId)) {
+            playerSocket.emit('game:playAgainAccepted');
+        }
         playerSocket.emit('game:phase', { code: room.code, phase: room.phase });
     }
 }
@@ -353,6 +369,7 @@ function beginRound(io, room) {
 
     room.lastRoundId = round.id;
     room.lastImposterPlayerId = imposterPlayerId;
+    room.playAgainReady = new Set();
 
     room.round = {
         roundId: round.id,
@@ -453,6 +470,7 @@ function createRoom(socket, playerName) {
         round: null,
         lastRoundId: null,
         lastImposterPlayerId: null,
+        playAgainReady: new Set(),
     };
 
     room.players.set(playerId, {
@@ -555,6 +573,10 @@ function removePlayerFromRoom(io, room, playerId) {
         room.round.votes.delete(playerId);
     }
 
+    if (room.playAgainReady?.has(playerId)) {
+        room.playAgainReady.delete(playerId);
+    }
+
     if (room.players.size === 0) {
         rooms.delete(room.code);
         return;
@@ -574,9 +596,12 @@ function removePlayerFromRoom(io, room, playerId) {
     if (room.round && room.phase === 'ANSWER') {
         broadcastAnswerProgress(io, room);
     }
-    if (room.round && room.phase === 'VOTE') {
+    if (room.round && room.phase === 'DISCUSS') {
         broadcastVoteProgress(io, room);
         maybeAdvanceToReveal(io, room);
+    }
+    if (room.phase === 'REVEAL') {
+        broadcastPlayAgainProgress(io, room);
     }
 }
 
@@ -686,11 +711,13 @@ function registerRoomHandlers(io, socket) {
         socket.emit('game:answerAccepted');
     });
 
-    socket.on('game:beginVote', () => {
-        const result = beginVoteFromDiscuss(socket, io);
+    socket.on('game:requestPlayAgain', () => {
+        const result = requestPlayAgain(socket, io);
         if (result.error) {
             socket.emit('room:error', { message: result.error });
+            return;
         }
+        socket.emit('game:playAgainAccepted');
     });
 
     socket.on('game:submitVote', ({ targetPlayerId }) => {

@@ -64,19 +64,12 @@
         </div>
 
         <div id="screenDiscuss" class="screen hidden">
-            <h2 class="screen-title">דיון</h2>
-            <p id="discussIntro">זה הזמן לדון ולשאול את שאר השחקנים שאלות — כדי לגלות מי המתחזה.</p>
+            <h2 class="screen-title">דיון והצבעה</h2>
+            <p id="discussIntro">להלן התשובות של כולם. דנו ביניכם — ואז לחצו על מי שאתם חושבים שהוא המתחזה (לא על עצמכם).</p>
             <ul id="discussList" class="list-cards"></ul>
-            <button type="button" id="beginVoteBtn" class="btn btn-accent hidden" onclick="beginVote()">המשך להצבעה</button>
-            <p id="discussHint" class="hint">ממתינים למארח להמשיך להצבעה…</p>
-        </div>
-
-        <div id="screenVote" class="screen hidden">
-            <h2 class="screen-title">הצבעה</h2>
-            <p class="lead">על מי אתם חושבים שהמתחזה? בחרו שחקן:</p>
-            <ul id="voteList" class="list-cards"></ul>
-            <p id="voteStatus" class="hint"></p>
-            <p id="voteProgress" class="hint"></p>
+            <button type="button" id="confirmVoteBtn" class="btn btn-accent" disabled onclick="confirmDiscussVote()">אשר את הבחירה</button>
+            <p id="discussVoteStatus" class="hint"></p>
+            <p id="discussVoteProgress" class="hint"></p>
         </div>
 
         <div id="screenReveal" class="screen hidden">
@@ -90,7 +83,11 @@
                 <p id="revealImposterQuestion" class="reveal-q-text imposter-q"></p>
             </div>
             <ul id="revealTallies" class="list-cards"></ul>
-            <button type="button" class="btn btn-primary" onclick="startNewGame()">משחק חדש</button>
+            <div class="reveal-actions">
+                <button type="button" id="playAgainBtn" class="btn btn-secondary" onclick="requestPlayAgainSame()">משחק נוסף עם אותם משתתפים</button>
+                <p id="playAgainProgress" class="hint"></p>
+                <button type="button" class="btn btn-primary" onclick="startNewGame()">משחק חדש</button>
+            </div>
         </div>
 
         <footer class="status-bar">
@@ -136,9 +133,11 @@
         let clientIsHost = false;
         let lobbyPlayerCount = 0;
         let cachedDiscussAnswers = [];
-        let cachedVoteTargets = [];
         let cachedReveal = null;
         let clientPlayerId = null;
+        let selectedDiscussTargetId = null;
+        let discussVoteLocked = false;
+        let playAgainRequested = false;
         const MIN_PLAYERS_TO_START = 3;
 
         function loadSession() {
@@ -187,16 +186,13 @@
                 return;
             }
             if (phase === 'DISCUSS') {
-                showDiscussScreen(isHost);
+                prepareDiscussScreen();
+                showDiscussScreen();
                 renderDiscussGrid(cachedDiscussAnswers);
                 return;
             }
-            if (phase === 'VOTE') {
-                showVoteScreen();
-                renderVoteTargets(cachedVoteTargets);
-                return;
-            }
             if (phase === 'REVEAL') {
+                prepareRevealActions();
                 showRevealScreen();
                 if (cachedReveal) {
                     renderReveal(cachedReveal);
@@ -286,7 +282,6 @@
             document.getElementById('screenStarting').classList.add('hidden');
             document.getElementById('screenAnswer').classList.add('hidden');
             document.getElementById('screenDiscuss').classList.add('hidden');
-            document.getElementById('screenVote').classList.add('hidden');
             document.getElementById('screenReveal').classList.add('hidden');
         }
 
@@ -311,28 +306,25 @@
             showFormError('');
         }
 
-        function showDiscussScreen(isHost) {
+        function prepareDiscussScreen() {
+            selectedDiscussTargetId = null;
+            discussVoteLocked = false;
+            document.getElementById('confirmVoteBtn').disabled = true;
+            document.getElementById('discussVoteStatus').textContent = '';
+            document.getElementById('discussVoteProgress').textContent = '';
+        }
+
+        function showDiscussScreen() {
             hideAllScreens();
             document.getElementById('screenDiscuss').classList.remove('hidden');
-            const btn = document.getElementById('beginVoteBtn');
-            const hint = document.getElementById('discussHint');
-            if (isHost) {
-                btn.classList.remove('hidden');
-                hint.textContent = 'כשסיימתם לדון, המשיכו להצבעה';
-            } else {
-                btn.classList.add('hidden');
-                hint.textContent = 'ממתינים למארח להמשיך להצבעה…';
-            }
-            hint.className = 'hint';
             showFormError('');
         }
 
-        function showVoteScreen() {
-            hideAllScreens();
-            document.getElementById('screenVote').classList.remove('hidden');
-            document.getElementById('voteStatus').textContent = '';
-            document.getElementById('voteProgress').textContent = '';
-            showFormError('');
+        function prepareRevealActions() {
+            playAgainRequested = false;
+            const btn = document.getElementById('playAgainBtn');
+            btn.disabled = false;
+            document.getElementById('playAgainProgress').textContent = '';
         }
 
         function showRevealScreen() {
@@ -379,20 +371,10 @@
             });
         }
 
-        function renderVoteTargets(targets) {
-            const list = document.getElementById('voteList');
-            list.innerHTML = '';
-            targets.forEach((target) => {
-                if (target.playerId === clientPlayerId) return;
-                const li = document.createElement('li');
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'btn btn-secondary';
-                btn.textContent = target.name;
-                btn.onclick = () => submitVoteFor(target.playerId);
-                li.appendChild(btn);
-                list.appendChild(li);
-            });
+        function updatePlayAgainProgress({ interested, total }) {
+            const el = document.getElementById('playAgainProgress');
+            el.className = 'hint';
+            el.textContent = `${interested} מתוך ${total} מעוניינים במשחק נוסף עם אותם משתתפים`;
         }
 
         function renderDiscussGrid(answers) {
@@ -400,6 +382,25 @@
             list.innerHTML = '';
             answers.forEach((item) => {
                 const li = document.createElement('li');
+                li.dataset.playerId = item.playerId;
+                if (
+                    item.playerId !== clientPlayerId &&
+                    !discussVoteLocked
+                ) {
+                    li.classList.add('discuss-selectable');
+                    li.tabIndex = 0;
+                    li.setAttribute('role', 'button');
+                    li.addEventListener('click', () => selectDiscussTarget(item.playerId));
+                    li.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            selectDiscussTarget(item.playerId);
+                        }
+                    });
+                }
+                if (item.playerId === selectedDiscussTargetId) {
+                    li.classList.add('discuss-selected');
+                }
                 const nameEl = document.createElement('div');
                 nameEl.className = 'discuss-name';
                 nameEl.textContent = item.name;
@@ -410,6 +411,20 @@
                 li.appendChild(textEl);
                 list.appendChild(li);
             });
+        }
+
+        function selectDiscussTarget(playerId) {
+            if (discussVoteLocked || playerId === clientPlayerId) return;
+            selectedDiscussTargetId = playerId;
+            renderDiscussGrid(cachedDiscussAnswers);
+            document.getElementById('confirmVoteBtn').disabled = false;
+            document.getElementById('discussVoteStatus').textContent = '';
+            document.getElementById('discussVoteStatus').className = 'hint';
+        }
+
+        function confirmDiscussVote() {
+            if (!selectedDiscussTargetId || discussVoteLocked) return;
+            socket.emit('game:submitVote', { targetPlayerId: selectedDiscussTargetId });
         }
 
         function showLobby(code, players, isHost) {
@@ -468,7 +483,7 @@
         });
 
         socket.on('room:players', ({ players, phase }) => {
-            if (phase === 'ANSWER' || phase === 'DISCUSS' || phase === 'VOTE' || phase === 'REVEAL') {
+            if (phase === 'ANSWER' || phase === 'DISCUSS' || phase === 'REVEAL') {
                 return;
             }
             renderPlayerList(players);
@@ -480,12 +495,11 @@
                 prepareAnswerScreen();
                 showAnswerScreen();
             } else if (phase === 'DISCUSS') {
-                showDiscussScreen(clientIsHost);
+                prepareDiscussScreen();
+                showDiscussScreen();
                 renderDiscussGrid(cachedDiscussAnswers);
-            } else if (phase === 'VOTE') {
-                showVoteScreen();
-                renderVoteTargets(cachedVoteTargets);
             } else if (phase === 'REVEAL') {
+                prepareRevealActions();
                 showRevealScreen();
                 if (cachedReveal) {
                     renderReveal(cachedReveal);
@@ -498,23 +512,30 @@
             renderDiscussGrid(cachedDiscussAnswers);
         });
 
-        socket.on('game:voteTargets', ({ targets }) => {
-            cachedVoteTargets = targets || [];
-            renderVoteTargets(cachedVoteTargets);
-        });
-
         socket.on('game:voteProgress', ({ submitted, total }) => {
-            document.getElementById('voteProgress').textContent =
-                `הצביעו ${submitted} מתוך ${total} שחקנים…`;
+            const el = document.getElementById('discussVoteProgress');
+            if (submitted >= total) {
+                el.textContent = 'כולם בחרו — חושפים תוצאות…';
+            } else {
+                el.textContent = `אישרו בחירה ${submitted} מתוך ${total} שחקנים…`;
+            }
         });
 
         socket.on('game:voteAccepted', () => {
-            document.getElementById('voteStatus').textContent = 'ההצבעה נשלחה!';
-            document.getElementById('voteStatus').className = 'hint status-ok';
-            const list = document.getElementById('voteList');
-            list.querySelectorAll('button').forEach((btn) => {
-                btn.disabled = true;
-            });
+            discussVoteLocked = true;
+            document.getElementById('confirmVoteBtn').disabled = true;
+            document.getElementById('discussVoteStatus').textContent = 'הבחירה נשלחה! ממתינים לשאר השחקנים…';
+            document.getElementById('discussVoteStatus').className = 'hint status-ok';
+            renderDiscussGrid(cachedDiscussAnswers);
+        });
+
+        socket.on('game:playAgainProgress', (payload) => {
+            updatePlayAgainProgress(payload);
+        });
+
+        socket.on('game:playAgainAccepted', () => {
+            playAgainRequested = true;
+            document.getElementById('playAgainBtn').disabled = true;
         });
 
         socket.on('game:reveal', (data) => {
@@ -544,20 +565,19 @@
 
         socket.on('room:error', ({ message }) => {
             const revealVisible = !document.getElementById('screenReveal').classList.contains('hidden');
-            const voteVisible = !document.getElementById('screenVote').classList.contains('hidden');
             const discussVisible = !document.getElementById('screenDiscuss').classList.contains('hidden');
             const answerVisible = !document.getElementById('screenAnswer').classList.contains('hidden');
             const lobbyVisible = !document.getElementById('screenLobby').classList.contains('hidden');
-            if (voteVisible) {
-                const status = document.getElementById('voteStatus');
-                status.textContent = message;
-                status.className = 'hint hint-error';
+            if (revealVisible) {
+                const el = document.getElementById('playAgainProgress');
+                el.textContent = message;
+                el.className = 'hint hint-error';
                 return;
             }
             if (discussVisible) {
-                const hint = document.getElementById('discussHint');
-                hint.textContent = message;
-                hint.className = 'hint hint-error';
+                const status = document.getElementById('discussVoteStatus');
+                status.textContent = message;
+                status.className = 'hint hint-error';
                 return;
             }
             if (answerVisible) {
@@ -583,8 +603,8 @@
             clientIsHost = false;
             clientPlayerId = null;
             cachedDiscussAnswers = [];
-            cachedVoteTargets = [];
             cachedReveal = null;
+            playAgainRequested = false;
         }
 
         function startNewGame() {
@@ -593,12 +613,9 @@
             resetToEntryScreen();
         }
 
-        function beginVote() {
-            socket.emit('game:beginVote');
-        }
-
-        function submitVoteFor(targetPlayerId) {
-            socket.emit('game:submitVote', { targetPlayerId });
+        function requestPlayAgainSame() {
+            if (playAgainRequested) return;
+            socket.emit('game:requestPlayAgain');
         }
 
         function startGame() {

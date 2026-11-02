@@ -380,6 +380,36 @@ textarea {
     border-radius: var(--radius-sm);
 }
 
+.list-cards li.discuss-selectable {
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.list-cards li.discuss-selectable:hover {
+    border-color: var(--accent);
+}
+
+.list-cards li.discuss-selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.25);
+}
+
+#confirmVoteBtn {
+    width: 100%;
+    margin-top: var(--space-3);
+}
+
+.reveal-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+}
+
+.reveal-actions .btn {
+    width: 100%;
+}
+
 #voteList li {
     padding: 0;
     border: none;
