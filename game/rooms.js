@@ -48,6 +48,33 @@ function normalizeAnswer(text) {
     return String(text || '').trim().slice(0, MAX_ANSWER_LENGTH);
 }
 
+/** Compare answers for "who said?" duplicate matching */
+function normalizeAnswerForCompare(text) {
+    return String(text || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+}
+
+function whoSaidCorrectTargetIds(room, authorId) {
+    const entry = room.round?.answers.get(authorId);
+    if (!entry) {
+        return new Set(authorId ? [authorId] : []);
+    }
+    const key = normalizeAnswerForCompare(entry.text);
+    const ids = new Set();
+    for (const [playerId, answerEntry] of room.round.answers) {
+        if (normalizeAnswerForCompare(answerEntry.text) === key) {
+            ids.add(playerId);
+        }
+    }
+    return ids;
+}
+
+function isWhoSaidGuessCorrect(room, authorId, targetId) {
+    return whoSaidCorrectTargetIds(room, authorId).has(targetId);
+}
+
 function generateRoomCode() {
     let code;
     do {
@@ -169,12 +196,13 @@ function buildWhoSaidLastResult(room) {
     }
     const authorName = room.players.get(authorId)?.name || '—';
     const answerText = room.round.answers.get(authorId)?.text || '';
+    const correctTargets = whoSaidCorrectTargetIds(room, authorId);
     const guessRows = [];
     for (const [guesserId, targetId] of room.round.lastResultGuesses || []) {
         guessRows.push({
             guesserName: room.players.get(guesserId)?.name || '—',
             guessedName: room.players.get(targetId)?.name || '—',
-            correct: targetId === authorId,
+            correct: correctTargets.has(targetId),
         });
     }
     return { answerText, authorName, guesses: guessRows };
@@ -187,7 +215,7 @@ function broadcastWhoSaidStep(io, room) {
     const stepTotal = room.round.guessOrder.length;
     const stepIndex = room.round.guessIndex + 1;
 
-    io.to(room.code).emit('game:whoSaidStep', {
+    const shared = {
         stepIndex,
         stepTotal,
         answerText: answerEntry?.text || '',
@@ -197,13 +225,14 @@ function broadcastWhoSaidStep(io, room) {
             submitted: room.round.currentGuesses.size,
             total: whoSaidExpectedGuessCount(room),
         },
-    });
+    };
 
     for (const player of room.players.values()) {
         if (!player.connected || !player.socketId) continue;
         const playerSocket = io.sockets.sockets.get(player.socketId);
         if (playerSocket) {
-            playerSocket.emit('game:whoSaidRole', {
+            playerSocket.emit('game:whoSaidStep', {
+                ...shared,
                 isAuthor: player.playerId === authorId,
             });
         }
@@ -223,13 +252,17 @@ function completeWhoSaidStep(io, room) {
     const authorId = currentWhoSaidAuthorId(room);
     room.round.lastResultAuthorId = authorId;
     room.round.lastResultGuesses = Array.from(room.round.currentGuesses.entries());
+    const correctTargets = whoSaidCorrectTargetIds(room, authorId);
 
     for (const [guesserId, targetId] of room.round.currentGuesses) {
-        if (targetId === authorId) {
-            const prev = room.round.guessScores.get(guesserId) || 0;
-            room.round.guessScores.set(guesserId, prev + 1);
-            const identified = room.round.timesIdentified.get(authorId) || 0;
-            room.round.timesIdentified.set(authorId, identified + 1);
+        if (!correctTargets.has(targetId)) {
+            continue;
+        }
+        const prev = room.round.guessScores.get(guesserId) || 0;
+        room.round.guessScores.set(guesserId, prev + 1);
+        for (const playerId of correctTargets) {
+            const identified = room.round.timesIdentified.get(playerId) || 0;
+            room.round.timesIdentified.set(playerId, identified + 1);
         }
     }
 

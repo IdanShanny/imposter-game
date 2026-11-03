@@ -617,6 +617,9 @@
             if (data.players?.length) {
                 clientPlayers = data.players;
             }
+            if (typeof data.isAuthor === 'boolean') {
+                whoSaidIsAuthor = data.isAuthor;
+            }
             cachedWhoSaidStep = data;
             renderWhoSaidLastResult(data.lastRoundResult);
             document.getElementById('whoSaidStepLabel').textContent =
@@ -781,16 +784,11 @@
         socket.on('game:whoSaidStep', (data) => {
             selectedWhoSaidTargetId = null;
             whoSaidGuessLocked = false;
+            whoSaidIsAuthor = Boolean(data.isAuthor);
             document.getElementById('whoSaidGuessStatus').textContent = '';
+            document.getElementById('whoSaidGuessStatus').className = 'hint';
             document.getElementById('confirmWhoSaidBtn').disabled = true;
             renderWhoSaidStep(data);
-        });
-
-        socket.on('game:whoSaidRole', ({ isAuthor }) => {
-            whoSaidIsAuthor = isAuthor;
-            if (cachedWhoSaidStep) {
-                renderWhoSaidStep(cachedWhoSaidStep);
-            }
         });
 
         socket.on('game:voteProgress', ({ submitted, total }) => {
