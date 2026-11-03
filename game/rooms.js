@@ -145,7 +145,18 @@ function currentWhoSaidAuthorId(room) {
 }
 
 function whoSaidExpectedGuessCount(room) {
-    return Math.max(0, room.players.size - 1);
+    const authorId = currentWhoSaidAuthorId(room);
+    let count = 0;
+    for (const player of room.players.values()) {
+        if (player.playerId === authorId) {
+            continue;
+        }
+        if (!player.connected) {
+            continue;
+        }
+        count += 1;
+    }
+    return count;
 }
 
 function whoSaidRevealPayload(room) {
@@ -218,6 +229,8 @@ function buildWhoSaidStepPayload(room, viewerPlayerId) {
     return {
         stepIndex,
         stepTotal,
+        guessIndex: room.round.guessIndex,
+        gameType: 'whoSaid',
         answerText: answerEntry?.text || '',
         lastRoundResult,
         players: playersPayload(room),
@@ -250,6 +263,7 @@ function broadcastWhoSaidStep(io, room) {
 
 function broadcastWhoSaidGuessProgress(io, room) {
     io.to(room.code).emit('game:voteProgress', {
+        gameType: 'whoSaid',
         submitted: room.round.currentGuesses.size,
         total: whoSaidExpectedGuessCount(room),
     });
@@ -342,11 +356,15 @@ function submitWhoSaidGuess(socket, io, targetPlayerId) {
     room.round.currentGuesses.set(playerId, targetPlayerId);
     broadcastWhoSaidGuessProgress(io, room);
 
-    if (room.round.currentGuesses.size >= whoSaidExpectedGuessCount(room)) {
+    const expected = whoSaidExpectedGuessCount(room);
+    const stepComplete =
+        expected === 0 ||
+        room.round.currentGuesses.size >= expected;
+    if (stepComplete) {
         completeWhoSaidStep(io, room);
     }
 
-    return { ok: true };
+    return { ok: true, stepComplete };
 }
 
 function voteTargetsPayload(room) {
@@ -647,7 +665,9 @@ function syncGameStateToPlayer(io, room, playerId) {
         if (room.gameType === 'whoSaid') {
             emitWhoSaidStepToPlayer(io, room, playerId);
             if (room.round.currentGuesses.has(playerId)) {
-                playerSocket.emit('game:voteAccepted');
+                playerSocket.emit('game:voteAccepted', {
+                    guessIndex: room.round.guessIndex,
+                });
             }
         } else {
             playerSocket.emit('game:answers', { answers: discussAnswersPayload(room) });
@@ -1115,7 +1135,12 @@ function registerRoomHandlers(io, socket) {
             socket.emit('room:error', { message: result.error });
             return;
         }
-        socket.emit('game:voteAccepted');
+        if (result.stepComplete) {
+            return;
+        }
+        socket.emit('game:voteAccepted', {
+            guessIndex: rooms.get(socket.data.roomCode)?.round?.guessIndex,
+        });
     }));
 
     socket.on('room:leave', safeSocketHandler('room:leave', () => {

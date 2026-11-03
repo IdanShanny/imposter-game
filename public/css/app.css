@@ -499,6 +499,16 @@ textarea {
     box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.25);
 }
 
+.who-said-debug {
+    margin-top: var(--space-2);
+    font-size: 0.6875rem;
+    font-family: ui-monospace, monospace;
+    color: var(--gray-600);
+    word-break: break-word;
+    direction: ltr;
+    text-align: left;
+}
+
 #confirmVoteBtn {
     width: 100%;
     margin-top: var(--space-2);

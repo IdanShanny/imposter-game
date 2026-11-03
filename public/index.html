@@ -91,6 +91,7 @@
                 <button type="button" id="confirmWhoSaidBtn" class="btn btn-accent" disabled onclick="confirmWhoSaidGuess()">אשר את הניחוש</button>
                 <p id="whoSaidGuessStatus" class="hint"></p>
                 <p id="whoSaidGuessProgress" class="hint"></p>
+                <p id="whoSaidDebug" class="who-said-debug hidden" aria-live="polite"></p>
             </div>
         </div>
 
@@ -175,11 +176,33 @@
         let whoSaidIsAuthor = false;
         let selectedWhoSaidTargetId = null;
         let whoSaidGuessLocked = false;
+        let whoSaidDebugEnabled =
+            new URLSearchParams(window.location.search).get('debug') === '1';
         const MIN_PLAYERS_TO_START = 3;
         const GAME_LABELS = {
             imposter: 'המתחזה',
             whoSaid: 'מי אמר?',
         };
+
+        function updateWhoSaidDebug(note) {
+            if (!whoSaidDebugEnabled) {
+                return;
+            }
+            const el = document.getElementById('whoSaidDebug');
+            el.classList.remove('hidden');
+            const step = cachedWhoSaidStep;
+            el.textContent = [
+                note || '',
+                `v=${window.__APP_VERSION || '?'}`,
+                `step=${step?.stepIndex ?? '—'}/${step?.stepTotal ?? '—'}`,
+                `guessIdx=${step?.guessIndex ?? '—'}`,
+                `author=${whoSaidIsAuthor}`,
+                `locked=${whoSaidGuessLocked}`,
+                `pid=${clientPlayerId ? String(clientPlayerId).slice(-6) : '—'}`,
+            ]
+                .filter(Boolean)
+                .join(' · ');
+        }
 
         function setGameModeUI(gameType) {
             clientGameType = gameType || 'imposter';
@@ -277,6 +300,7 @@
             }
             clientIsHost = isHost;
             if (phase === 'ANSWER') {
+                cachedWhoSaidStep = null;
                 prepareAnswerScreen();
                 showAnswerScreen();
                 return;
@@ -310,6 +334,14 @@
         socket.on('connect', () => {
             realtimeEl.textContent = 'מחובר בזמן אמת';
             realtimeEl.className = 'ok';
+            fetch('/api/health')
+                .then((r) => (r.ok ? r.json() : null))
+                .then((data) => {
+                    if (data?.version) {
+                        window.__APP_VERSION = data.version;
+                    }
+                })
+                .catch(() => {});
             tryRejoinSession();
         });
         socket.on('disconnect', () => {
@@ -671,6 +703,7 @@
 
             renderWhoSaidPlayerPicker(data.players);
             updateWhoSaidGuessProgress(data.guessProgress);
+            updateWhoSaidDebug('step');
         }
 
         function updateWhoSaidGuessProgress({ submitted, total }) {
@@ -777,6 +810,7 @@
                 setGameModeUI(gameType);
             }
             if (phase === 'ANSWER') {
+                cachedWhoSaidStep = null;
                 prepareAnswerScreen();
                 showAnswerScreen();
             } else if (phase === 'DISCUSS') {
@@ -809,6 +843,10 @@
         });
 
         socket.on('game:whoSaidStep', (data) => {
+            if (data.gameType) {
+                setGameModeUI(data.gameType);
+                updateDiscussPanelsForGameType();
+            }
             selectedWhoSaidTargetId = null;
             whoSaidGuessLocked = false;
             whoSaidIsAuthor = Boolean(data.isAuthor);
@@ -816,11 +854,14 @@
             document.getElementById('whoSaidGuessStatus').className = 'hint';
             document.getElementById('confirmWhoSaidBtn').disabled = true;
             renderWhoSaidStep(data);
+            updateWhoSaidDebug('whoSaidStep');
         });
 
-        socket.on('game:voteProgress', ({ submitted, total }) => {
-            if (clientGameType === 'whoSaid') {
+        socket.on('game:voteProgress', ({ submitted, total, gameType }) => {
+            const mode = gameType || clientGameType;
+            if (mode === 'whoSaid') {
                 updateWhoSaidGuessProgress({ submitted, total });
+                updateWhoSaidDebug(`prog ${submitted}/${total}`);
                 return;
             }
             const el = document.getElementById('discussVoteProgress');
@@ -831,14 +872,24 @@
             }
         });
 
-        socket.on('game:voteAccepted', () => {
+        socket.on('game:voteAccepted', (payload) => {
             if (clientGameType === 'whoSaid') {
+                const stepGuessIndex = cachedWhoSaidStep?.guessIndex;
+                if (
+                    payload?.guessIndex != null &&
+                    stepGuessIndex != null &&
+                    payload.guessIndex !== stepGuessIndex
+                ) {
+                    updateWhoSaidDebug('voteAccepted stale');
+                    return;
+                }
                 whoSaidGuessLocked = true;
                 document.getElementById('confirmWhoSaidBtn').disabled = true;
                 document.getElementById('whoSaidGuessStatus').textContent =
                     'הניחוש נשלח! ממתינים לשאר השחקנים…';
                 document.getElementById('whoSaidGuessStatus').className = 'hint status-ok';
                 renderWhoSaidPlayerPicker(cachedWhoSaidStep?.players);
+                updateWhoSaidDebug('voteAccepted');
                 return;
             }
             discussVoteLocked = true;
