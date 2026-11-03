@@ -101,12 +101,51 @@ function broadcastPlayers(io, room) {
     });
 }
 
-function broadcastPhase(io, room) {
-    io.to(room.code).emit('game:phase', {
+function phasePayload(room) {
+    return {
         code: room.code,
         phase: room.phase,
         gameType: room.gameType || 'imposter',
+        roundId: room.round?.roundId ?? null,
+    };
+}
+
+function broadcastPhase(io, room) {
+    io.to(room.code).emit('game:phase', phasePayload(room));
+}
+
+function questionForPlayer(room, playerId) {
+    if (!room.round) {
+        return null;
+    }
+    if (room.gameType === 'whoSaid') {
+        return room.round.realQuestion;
+    }
+    const isImposter = playerId === room.round.imposterPlayerId;
+    return isImposter ? room.round.imposterQuestion : room.round.realQuestion;
+}
+
+function emitPromptToPlayer(io, room, playerId) {
+    if (room.phase !== 'ANSWER' || !room.round) {
+        return false;
+    }
+    const player = room.players.get(playerId);
+    if (!player?.socketId) {
+        return false;
+    }
+    const playerSocket = io.sockets.sockets.get(player.socketId);
+    if (!playerSocket) {
+        return false;
+    }
+    const question = questionForPlayer(room, playerId);
+    if (!question) {
+        return false;
+    }
+    playerSocket.emit('game:yourPrompt', {
+        question,
+        roundId: room.round.roundId,
     });
+    return true;
 }
 
 function discussAnswersPayload(room) {
@@ -592,6 +631,7 @@ function roomSnapshot(room, playerId) {
         isHost: room.hostPlayerId === playerId,
         sessionToken: playerId,
         minPlayersToStart: MIN_PLAYERS_TO_START,
+        roundId: room.round?.roundId ?? null,
     };
 }
 
@@ -608,23 +648,26 @@ function attachSocketToPlayer(socket, room, player) {
 }
 
 function sendPromptsToPlayers(io, room) {
-    if (!room.round) return;
-    for (const player of room.players.values()) {
-        if (!player.connected || !player.socketId) continue;
-        let question;
-        if (room.gameType === 'whoSaid') {
-            question = room.round.realQuestion;
-        } else {
-            const isImposter = player.playerId === room.round.imposterPlayerId;
-            question = isImposter
-                ? room.round.imposterQuestion
-                : room.round.realQuestion;
-        }
-        const playerSocket = io.sockets.sockets.get(player.socketId);
-        if (playerSocket) {
-            playerSocket.emit('game:yourPrompt', { question });
-        }
+    if (!room.round) {
+        return;
     }
+    for (const playerId of room.players.keys()) {
+        emitPromptToPlayer(io, room, playerId);
+    }
+}
+
+function resyncPromptToPlayer(socket, io) {
+    const code = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!code || !playerId) {
+        return { error: 'אינך בחדר' };
+    }
+    const room = rooms.get(code);
+    if (!room || room.phase !== 'ANSWER' || !room.round) {
+        return { ok: true };
+    }
+    emitPromptToPlayer(io, room, playerId);
+    return { ok: true };
 }
 
 function syncGameStateToPlayer(io, room, playerId) {
@@ -637,17 +680,8 @@ function syncGameStateToPlayer(io, room, playerId) {
     playerSocket.emit('room:restored', roomSnapshot(room, playerId));
 
     if (room.phase === 'ANSWER' && room.round) {
-        playerSocket.emit('game:phase', { code: room.code, phase: room.phase, gameType: room.gameType || 'imposter' });
-        let question;
-        if (room.gameType === 'whoSaid') {
-            question = room.round.realQuestion;
-        } else {
-            const isImposter = playerId === room.round.imposterPlayerId;
-            question = isImposter
-                ? room.round.imposterQuestion
-                : room.round.realQuestion;
-        }
-        playerSocket.emit('game:yourPrompt', { question });
+        emitPromptToPlayer(io, room, playerId);
+        playerSocket.emit('game:phase', phasePayload(room));
         if (room.round.answers.has(playerId)) {
             playerSocket.emit('game:answerAccepted');
         }
@@ -753,8 +787,8 @@ function beginRound(io, room) {
     }
     room.phase = 'ANSWER';
 
-    broadcastPhase(io, room);
     sendPromptsToPlayers(io, room);
+    broadcastPhase(io, room);
     broadcastAnswerProgress(io, room);
 }
 
@@ -1118,6 +1152,13 @@ function registerRoomHandlers(io, socket) {
             return;
         }
         socket.emit('game:answerAccepted');
+    }));
+
+    socket.on('game:requestPrompt', safeSocketHandler('game:requestPrompt', () => {
+        const result = resyncPromptToPlayer(socket, io);
+        if (result.error) {
+            socket.emit('room:error', { message: result.error });
+        }
     }));
 
     socket.on('game:requestPlayAgain', safeSocketHandler('game:requestPlayAgain', () => {

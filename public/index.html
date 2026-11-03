@@ -167,6 +167,8 @@
         let cachedDiscussAnswers = [];
         let cachedWhoSaidStep = null;
         let cachedReveal = null;
+        let activeAnswerRoundId = null;
+        let cachedPromptQuestion = null;
         let clientPlayerId = null;
         let selectedDiscussTargetId = null;
         let discussVoteLocked = false;
@@ -282,7 +284,7 @@
             });
         }
 
-        function applyRoomState({ code, players, isHost, phase, sessionToken, gameType }) {
+        function applyRoomState({ code, players, isHost, phase, sessionToken, gameType, roundId }) {
             if (gameType) {
                 setGameModeUI(gameType);
             }
@@ -301,8 +303,17 @@
             clientIsHost = isHost;
             if (phase === 'ANSWER') {
                 cachedWhoSaidStep = null;
-                prepareAnswerScreen();
+                if (roundId) {
+                    if (activeAnswerRoundId !== roundId) {
+                        activeAnswerRoundId = roundId;
+                        cachedPromptQuestion = null;
+                    } else {
+                        activeAnswerRoundId = roundId;
+                    }
+                }
+                prepareAnswerScreen(roundId);
                 showAnswerScreen();
+                socket.emit('game:requestPrompt');
                 return;
             }
             if (phase === 'DISCUSS') {
@@ -430,8 +441,19 @@
             showFormError('');
         }
 
-        function prepareAnswerScreen() {
-            document.getElementById('promptText').textContent = 'טוען…';
+        function applyPromptToAnswerUI() {
+            if (cachedPromptQuestion) {
+                document.getElementById('promptText').textContent = cachedPromptQuestion;
+            }
+        }
+
+        function prepareAnswerScreen(roundId) {
+            const rid = roundId ?? activeAnswerRoundId;
+            if (rid && rid === activeAnswerRoundId && cachedPromptQuestion) {
+                applyPromptToAnswerUI();
+            } else {
+                document.getElementById('promptText').textContent = 'טוען…';
+            }
             document.getElementById('answerInput').value = '';
             document.getElementById('answerInput').disabled = false;
             document.getElementById('submitAnswerBtn').disabled = false;
@@ -805,14 +827,23 @@
             updateStartControls(players, clientIsHost);
         });
 
-        socket.on('game:phase', ({ phase, gameType }) => {
+        socket.on('game:phase', ({ phase, gameType, roundId }) => {
             if (gameType) {
                 setGameModeUI(gameType);
             }
             if (phase === 'ANSWER') {
                 cachedWhoSaidStep = null;
-                prepareAnswerScreen();
+                if (roundId) {
+                    if (activeAnswerRoundId !== roundId) {
+                        activeAnswerRoundId = roundId;
+                        cachedPromptQuestion = null;
+                    } else {
+                        activeAnswerRoundId = roundId;
+                    }
+                }
+                prepareAnswerScreen(roundId);
                 showAnswerScreen();
+                socket.emit('game:requestPrompt');
             } else if (phase === 'DISCUSS') {
                 prepareDiscussScreen();
                 updateDiscussPanelsForGameType();
@@ -913,8 +944,12 @@
             renderReveal(data);
         });
 
-        socket.on('game:yourPrompt', ({ question }) => {
-            document.getElementById('promptText').textContent = question;
+        socket.on('game:yourPrompt', ({ question, roundId }) => {
+            cachedPromptQuestion = question;
+            if (roundId) {
+                activeAnswerRoundId = roundId;
+            }
+            applyPromptToAnswerUI();
         });
 
         socket.on('game:answerAccepted', () => {
@@ -990,6 +1025,8 @@
             clientPlayerId = null;
             cachedDiscussAnswers = [];
             cachedReveal = null;
+            cachedPromptQuestion = null;
+            activeAnswerRoundId = null;
             playAgainRequested = false;
         }
 
