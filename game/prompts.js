@@ -4,28 +4,51 @@ const crypto = require('crypto');
 
 const promptsPath = path.join(__dirname, '..', 'data', 'prompts.json');
 
-function loadRounds() {
-    const { rounds } = JSON.parse(fs.readFileSync(promptsPath, 'utf8'));
-    if (!Array.isArray(rounds) || rounds.length === 0) {
-        throw new Error('No prompts configured');
+let cachedData = null;
+
+function loadPromptsData() {
+    if (cachedData) {
+        return cachedData;
     }
-    return rounds;
+    cachedData = JSON.parse(fs.readFileSync(promptsPath, 'utf8'));
+    return cachedData;
+}
+
+function normalizeImposterRound(entry) {
+    return {
+        id: entry.id,
+        realQuestion: entry.civilian,
+        imposterQuestion: entry.imposter,
+    };
+}
+
+function normalizeWhoSaidQuestion(entry) {
+    return {
+        id: entry.id,
+        realQuestion: entry.text,
+    };
 }
 
 function roundsForGameType(gameType) {
-    let rounds = loadRounds();
+    const data = loadPromptsData();
     if (gameType === 'whoSaid') {
-        const filtered = rounds.filter((r) => r.whoSaid === true);
-        if (filtered.length > 0) {
-            rounds = filtered;
+        const questions = data.whoSaid?.questions;
+        if (!Array.isArray(questions) || questions.length === 0) {
+            throw new Error('No who-said questions configured');
         }
-    } else {
-        const filtered = rounds.filter((r) => r.whoSaid !== true);
-        if (filtered.length > 0) {
-            rounds = filtered;
-        }
+        return questions.map(normalizeWhoSaidQuestion);
     }
-    return rounds;
+
+    const rounds = data.imposter?.rounds;
+    if (!Array.isArray(rounds) || rounds.length === 0) {
+        throw new Error('No imposter rounds configured');
+    }
+    return rounds.map(normalizeImposterRound);
+}
+
+/** @deprecated use roundsForGameType */
+function loadRounds() {
+    return roundsForGameType('imposter');
 }
 
 function pickRandomRound(excludeRoundId = null, gameType = 'imposter') {
@@ -40,4 +63,4 @@ function pickRandomRound(excludeRoundId = null, gameType = 'imposter') {
     return rounds[index];
 }
 
-module.exports = { pickRandomRound, loadRounds, roundsForGameType };
+module.exports = { pickRandomRound, loadRounds, roundsForGameType, loadPromptsData };
