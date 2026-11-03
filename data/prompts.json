@@ -41,6 +41,96 @@
       "id": "q7",
       "realQuestion": "מה צבע החולצה הכי יפה בחדר?",
       "imposterQuestion": "מה הצבע הכי יפה בעיניך?"
+    },
+    {
+      "id": "q9",
+      "realQuestion": "ממה הכי פחדת כשהיית ילד?",
+      "imposterQuestion": "ציין פחד נפוץ אצל ילדים",
+      "whoSaid": true
+    },
+    {
+      "id": "q10",
+      "realQuestion": "על איזה הישג היית רוצה לזכות בפרס עולמי?",
+      "imposterQuestion": "ציין תחום או הישג כללי",
+      "whoSaid": true
+    },
+    {
+      "id": "q11",
+      "realQuestion": "מהו ההרגל הכי מוזר או מעצבן שלך?",
+      "imposterQuestion": "ציין הרגל יומיומי כלשהו",
+      "whoSaid": true
+    },
+    {
+      "id": "q12",
+      "realQuestion": "אם היית חייב להחליף מקצוע מחר, במה היית בוחר?",
+      "imposterQuestion": "ציין מקצוע או תחום עבודה",
+      "whoSaid": true
+    },
+    {
+      "id": "q13",
+      "realQuestion": "מה הדבר הכי מיותר שקנית אי פעם?",
+      "imposterQuestion": "ציין פריט שאפשר לקנות בחנות",
+      "whoSaid": true
+    },
+    {
+      "id": "q14",
+      "realQuestion": "לאיזו תקופה בהיסטוריה היית רוצה לחזור בזמן?",
+      "imposterQuestion": "ציין תקופה או עידן כללי",
+      "whoSaid": true
+    },
+    {
+      "id": "q15",
+      "realQuestion": "איזה שיר אתה שר הכי הרבה באוטו או במקלחת?",
+      "imposterQuestion": "ציין שיר או סגנון מוזיקה",
+      "whoSaid": true
+    },
+    {
+      "id": "q16",
+      "realQuestion": "מה המאכל הכי מוזר שטעמת ואיכשהו אהבת?",
+      "imposterQuestion": "ציין מאכל או שילוב טעמים",
+      "whoSaid": true
+    },
+    {
+      "id": "q17",
+      "realQuestion": "מהי תכונת האופי שהכי חשובה לך בחברים שלך?",
+      "imposterQuestion": "ציין תכונה חיובית בבני אדם",
+      "whoSaid": true
+    },
+    {
+      "id": "q18",
+      "realQuestion": "אם היית יכול לבחור כוח-על אחד, מה הוא היה?",
+      "imposterQuestion": "ציין יכולת דמיונית כללית",
+      "whoSaid": true
+    },
+    {
+      "id": "q19",
+      "realQuestion": "מה גרם לך לצחוק הכי חזק לאחרונה?",
+      "imposterQuestion": "תאר מצב מצחיק כללי בקצרה",
+      "whoSaid": true
+    },
+    {
+      "id": "q20",
+      "realQuestion": "איזו סדרה או סרט אתה ממליץ עליהם הכי הרבה?",
+      "imposterQuestion": "ציין סוג תוכן או ז'אנר",
+      "whoSaid": true
+    },
+    {
+      "id": "q21",
+      "realQuestion": "מה עשית היום מיד אחרי שקמת?",
+      "imposterQuestion": "ציין פעולה יומיומית בבוקר",
+      "whoSaid": true
+    },
+    {
+      "id": "q22",
+      "realQuestion": "על מה היית מוציא מיליון שקל בשבוע הראשון?",
+      "imposterQuestion": "ציין קטגוריה של הוצאה (נסיעה, רכב וכו')",
+      "whoSaid": true
+    },
+    {
+      "id": "q23",
+      "realQuestion": "באיזו עיר בישראל הכי כיף לך לבלות?",
+      "imposterQuestion": "ציין שם של עיר",
+      "whoSaid": true
     }
   ]
 }

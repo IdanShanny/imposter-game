@@ -19,6 +19,11 @@ function roundsForGameType(gameType) {
         if (filtered.length > 0) {
             rounds = filtered;
         }
+    } else {
+        const filtered = rounds.filter((r) => r.whoSaid !== true);
+        if (filtered.length > 0) {
+            rounds = filtered;
+        }
     }
     return rounds;
 }
