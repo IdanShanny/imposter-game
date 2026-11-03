@@ -192,6 +192,7 @@ function broadcastWhoSaidStep(io, room) {
         stepTotal,
         answerText: answerEntry?.text || '',
         lastRoundResult,
+        players: playersPayload(room),
         guessProgress: {
             submitted: room.round.currentGuesses.size,
             total: whoSaidExpectedGuessCount(room),

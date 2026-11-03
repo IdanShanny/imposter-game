@@ -588,16 +588,17 @@
             return div.innerHTML;
         }
 
-        function renderWhoSaidPlayerPicker() {
+        function renderWhoSaidPlayerPicker(players) {
             const list = document.getElementById('whoSaidPlayerList');
             list.innerHTML = '';
-            clientPlayers.forEach((player) => {
+            const roster = players || clientPlayers;
+            roster.forEach((player) => {
+                if (player.id === clientPlayerId) {
+                    return;
+                }
                 const li = document.createElement('li');
                 li.dataset.playerId = player.id;
-                const canSelect =
-                    !whoSaidIsAuthor &&
-                    !whoSaidGuessLocked &&
-                    player.id !== clientPlayerId;
+                const canSelect = !whoSaidIsAuthor && !whoSaidGuessLocked;
                 if (canSelect) {
                     li.classList.add('discuss-selectable');
                     li.tabIndex = 0;
@@ -613,6 +614,9 @@
         }
 
         function renderWhoSaidStep(data) {
+            if (data.players?.length) {
+                clientPlayers = data.players;
+            }
             cachedWhoSaidStep = data;
             renderWhoSaidLastResult(data.lastRoundResult);
             document.getElementById('whoSaidStepLabel').textContent =
@@ -622,18 +626,22 @@
 
             const authorHint = document.getElementById('whoSaidAuthorHint');
             const confirmBtn = document.getElementById('confirmWhoSaidBtn');
+            const listEl = document.getElementById('whoSaidPlayerList');
             if (whoSaidIsAuthor) {
-                authorHint.textContent = 'זו התשובה שלך — ממתינים לניחושים של השאר';
-                authorHint.classList.remove('hidden');
+                authorHint.classList.add('hidden');
+                listEl.classList.add('hidden');
+                confirmBtn.textContent = 'זו התשובה שלך — לא צריך לנחש';
                 confirmBtn.disabled = true;
             } else {
+                listEl.classList.remove('hidden');
+                confirmBtn.textContent = 'אשר את הניחוש';
                 authorHint.classList.add('hidden');
                 if (!whoSaidGuessLocked) {
                     confirmBtn.disabled = !selectedWhoSaidTargetId;
                 }
             }
 
-            renderWhoSaidPlayerPicker();
+            renderWhoSaidPlayerPicker(data.players);
             updateWhoSaidGuessProgress(data.guessProgress);
         }
 
@@ -651,7 +659,7 @@
                 return;
             }
             selectedWhoSaidTargetId = playerId;
-            renderWhoSaidPlayerPicker();
+            renderWhoSaidPlayerPicker(cachedWhoSaidStep?.players);
             document.getElementById('confirmWhoSaidBtn').disabled = false;
             document.getElementById('whoSaidGuessStatus').textContent = '';
         }
@@ -726,6 +734,9 @@
         });
 
         socket.on('room:players', ({ players, phase }) => {
+            if (players) {
+                clientPlayers = players;
+            }
             if (phase === 'ANSWER' || phase === 'DISCUSS' || phase === 'REVEAL') {
                 return;
             }
@@ -802,7 +813,7 @@
                 document.getElementById('whoSaidGuessStatus').textContent =
                     'הניחוש נשלח! ממתינים לשאר השחקנים…';
                 document.getElementById('whoSaidGuessStatus').className = 'hint status-ok';
-                renderWhoSaidPlayerPicker();
+                renderWhoSaidPlayerPicker(cachedWhoSaidStep?.players);
                 return;
             }
             discussVoteLocked = true;
