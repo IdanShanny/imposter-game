@@ -12,8 +12,19 @@ function loadRounds() {
     return rounds;
 }
 
-function pickRandomRound(excludeRoundId = null) {
+function roundsForGameType(gameType) {
     let rounds = loadRounds();
+    if (gameType === 'whoSaid') {
+        const filtered = rounds.filter((r) => r.whoSaid === true);
+        if (filtered.length > 0) {
+            rounds = filtered;
+        }
+    }
+    return rounds;
+}
+
+function pickRandomRound(excludeRoundId = null, gameType = 'imposter') {
+    let rounds = roundsForGameType(gameType);
     if (excludeRoundId && rounds.length > 1) {
         const filtered = rounds.filter((r) => r.id !== excludeRoundId);
         if (filtered.length > 0) {
@@ -24,4 +35,4 @@ function pickRandomRound(excludeRoundId = null) {
     return rounds[index];
 }
 
-module.exports = { pickRandomRound, loadRounds };
+module.exports = { pickRandomRound, loadRounds, roundsForGameType };

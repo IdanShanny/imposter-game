@@ -8,6 +8,23 @@ const MAX_ANSWER_LENGTH = 120;
 const MIN_PLAYERS_TO_START = 3;
 const DISCONNECT_GRACE_MS = 5 * 60 * 1000;
 
+function normalizeGameType(value) {
+    return value === 'whoSaid' ? 'whoSaid' : 'imposter';
+}
+
+function rosterRoundKey(room) {
+    return `${rosterKey(room)}|${room.gameType || 'imposter'}`;
+}
+
+function shufflePlayerIds(playerIds) {
+    const list = [...playerIds];
+    for (let i = list.length - 1; i > 0; i -= 1) {
+        const j = crypto.randomInt(0, i + 1);
+        [list[i], list[j]] = [list[j], list[i]];
+    }
+    return list;
+}
+
 /** Same player names in a new room — avoid repeating last round / imposter */
 const lastRoundIdByRoster = new Map();
 const lastImposterNameByRoster = new Map();
@@ -61,6 +78,7 @@ function broadcastPhase(io, room) {
     io.to(room.code).emit('game:phase', {
         code: room.code,
         phase: room.phase,
+        gameType: room.gameType || 'imposter',
     });
 }
 
@@ -95,6 +113,201 @@ function beginDiscussPhase(io, room) {
     broadcastPhase(io, room);
 }
 
+function currentWhoSaidAuthorId(room) {
+    return room.round?.guessOrder?.[room.round.guessIndex] ?? null;
+}
+
+function whoSaidExpectedGuessCount(room) {
+    return Math.max(0, room.players.size - 1);
+}
+
+function whoSaidRevealPayload(room) {
+    const scores = new Map(room.round.guessScores || []);
+    for (const playerId of room.players.keys()) {
+        if (!scores.has(playerId)) {
+            scores.set(playerId, 0);
+        }
+    }
+    let maxScore = 0;
+    for (const score of scores.values()) {
+        if (score > maxScore) {
+            maxScore = score;
+        }
+    }
+    const winners = [];
+    for (const [playerId, score] of scores) {
+        if (score === maxScore) {
+            winners.push({
+                playerId,
+                name: room.players.get(playerId)?.name || '—',
+                score,
+            });
+        }
+    }
+
+    const tallies = voteTargetsPayload(room).map((p) => ({
+        playerId: p.playerId,
+        name: p.name,
+        answer: room.round.answers.get(p.playerId)?.text || '',
+        timesCorrectlyGuessed: room.round.timesIdentified?.get(p.playerId) || 0,
+        correctGuesses: scores.get(p.playerId) || 0,
+    }));
+
+    return {
+        gameType: 'whoSaid',
+        winners,
+        maxScore,
+        tallies,
+        realQuestion: room.round.realQuestion,
+    };
+}
+
+function buildWhoSaidLastResult(room) {
+    const authorId = room.round.lastResultAuthorId;
+    if (!authorId) {
+        return null;
+    }
+    const authorName = room.players.get(authorId)?.name || '—';
+    const answerText = room.round.answers.get(authorId)?.text || '';
+    const guessRows = [];
+    for (const [guesserId, targetId] of room.round.lastResultGuesses || []) {
+        guessRows.push({
+            guesserName: room.players.get(guesserId)?.name || '—',
+            guessedName: room.players.get(targetId)?.name || '—',
+            correct: targetId === authorId,
+        });
+    }
+    return { answerText, authorName, guesses: guessRows };
+}
+
+function broadcastWhoSaidStep(io, room) {
+    const authorId = currentWhoSaidAuthorId(room);
+    const answerEntry = authorId ? room.round.answers.get(authorId) : null;
+    const lastRoundResult = buildWhoSaidLastResult(room);
+    const stepTotal = room.round.guessOrder.length;
+    const stepIndex = room.round.guessIndex + 1;
+
+    io.to(room.code).emit('game:whoSaidStep', {
+        stepIndex,
+        stepTotal,
+        answerText: answerEntry?.text || '',
+        lastRoundResult,
+        guessProgress: {
+            submitted: room.round.currentGuesses.size,
+            total: whoSaidExpectedGuessCount(room),
+        },
+    });
+
+    for (const player of room.players.values()) {
+        if (!player.connected || !player.socketId) continue;
+        const playerSocket = io.sockets.sockets.get(player.socketId);
+        if (playerSocket) {
+            playerSocket.emit('game:whoSaidRole', {
+                isAuthor: player.playerId === authorId,
+            });
+        }
+    }
+
+    broadcastWhoSaidGuessProgress(io, room);
+}
+
+function broadcastWhoSaidGuessProgress(io, room) {
+    io.to(room.code).emit('game:voteProgress', {
+        submitted: room.round.currentGuesses.size,
+        total: whoSaidExpectedGuessCount(room),
+    });
+}
+
+function completeWhoSaidStep(io, room) {
+    const authorId = currentWhoSaidAuthorId(room);
+    room.round.lastResultAuthorId = authorId;
+    room.round.lastResultGuesses = Array.from(room.round.currentGuesses.entries());
+
+    for (const [guesserId, targetId] of room.round.currentGuesses) {
+        if (targetId === authorId) {
+            const prev = room.round.guessScores.get(guesserId) || 0;
+            room.round.guessScores.set(guesserId, prev + 1);
+            const identified = room.round.timesIdentified.get(authorId) || 0;
+            room.round.timesIdentified.set(authorId, identified + 1);
+        }
+    }
+
+    room.round.guessIndex += 1;
+    room.round.currentGuesses = new Map();
+
+    if (room.round.guessIndex >= room.round.guessOrder.length) {
+        beginRevealPhase(io, room);
+        return;
+    }
+
+    broadcastWhoSaidStep(io, room);
+}
+
+function beginWhoSaidGuessPhase(io, room) {
+    room.phase = 'DISCUSS';
+    const playerIds = Array.from(room.players.keys());
+    room.round.guessOrder = shufflePlayerIds(playerIds);
+    room.round.guessIndex = 0;
+    room.round.guessScores = new Map();
+    room.round.timesIdentified = new Map();
+    room.round.currentGuesses = new Map();
+    room.round.lastResultAuthorId = null;
+    room.round.lastResultGuesses = null;
+    for (const id of playerIds) {
+        room.round.guessScores.set(id, 0);
+        room.round.timesIdentified.set(id, 0);
+    }
+    broadcastWhoSaidStep(io, room);
+    broadcastPhase(io, room);
+}
+
+function submitWhoSaidGuess(socket, io, targetPlayerId) {
+    const code = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!code || !playerId) {
+        return { error: 'אינך בחדר' };
+    }
+
+    const room = rooms.get(code);
+    if (!room?.round || room.gameType !== 'whoSaid') {
+        return { error: 'אין סיבוב פעיל' };
+    }
+
+    if (room.phase !== 'DISCUSS') {
+        return { error: 'לא בשלב ניחושים' };
+    }
+
+    const authorId = currentWhoSaidAuthorId(room);
+    if (!authorId) {
+        return { error: 'אין תשובה פעילה' };
+    }
+
+    if (playerId === authorId) {
+        return { error: 'לא ניתן לנחש על התשובה שלך' };
+    }
+
+    if (targetPlayerId === playerId) {
+        return { error: 'לא ניתן לנחש את עצמך' };
+    }
+
+    if (!room.players.has(targetPlayerId)) {
+        return { error: 'שחקן לא תקין' };
+    }
+
+    if (room.round.currentGuesses.has(playerId)) {
+        return { error: 'כבר שלחת ניחוש' };
+    }
+
+    room.round.currentGuesses.set(playerId, targetPlayerId);
+    broadcastWhoSaidGuessProgress(io, room);
+
+    if (room.round.currentGuesses.size >= whoSaidExpectedGuessCount(room)) {
+        completeWhoSaidStep(io, room);
+    }
+
+    return { ok: true };
+}
+
 function voteTargetsPayload(room) {
     return Array.from(room.players.values()).map((p) => ({
         playerId: p.playerId,
@@ -110,6 +323,10 @@ function broadcastVoteProgress(io, room) {
 }
 
 function revealPayload(room) {
+    if (room.gameType === 'whoSaid') {
+        return whoSaidRevealPayload(room);
+    }
+
     const imposter = room.players.get(room.round.imposterPlayerId);
     const voteCounts = new Map();
     for (const targetId of room.round.votes.values()) {
@@ -142,6 +359,7 @@ function revealPayload(room) {
     const civiliansWin = imposterVoteCount > 0 && imposterVoteCount === topVotes;
 
     return {
+        gameType: 'imposter',
         imposters: imposter
             ? [{ playerId: imposter.playerId, name: imposter.name }]
             : [],
@@ -227,6 +445,10 @@ function submitVote(socket, io, targetPlayerId) {
         return { error: 'אין סיבוב פעיל' };
     }
 
+    if (room.gameType === 'whoSaid') {
+        return submitWhoSaidGuess(socket, io, targetPlayerId);
+    }
+
     if (room.phase !== 'DISCUSS') {
         return { error: 'לא בשלב דיון והצבעה' };
     }
@@ -284,7 +506,11 @@ function requestPlayAgain(socket, io) {
 function maybeAdvanceToDiscuss(io, room) {
     if (room.phase !== 'ANSWER' || !room.round) return;
     if (room.round.answers.size < room.players.size) return;
-    beginDiscussPhase(io, room);
+    if (room.gameType === 'whoSaid') {
+        beginWhoSaidGuessPhase(io, room);
+    } else {
+        beginDiscussPhase(io, room);
+    }
 }
 
 function broadcastAnswerProgress(io, room) {
@@ -302,6 +528,7 @@ function roomSnapshot(room, playerId) {
     return {
         code: room.code,
         phase: room.phase,
+        gameType: room.gameType || 'imposter',
         players: playersPayload(room),
         isHost: room.hostPlayerId === playerId,
         sessionToken: playerId,
@@ -325,8 +552,15 @@ function sendPromptsToPlayers(io, room) {
     if (!room.round) return;
     for (const player of room.players.values()) {
         if (!player.connected || !player.socketId) continue;
-        const isImposter = player.playerId === room.round.imposterPlayerId;
-        const question = isImposter ? room.round.imposterQuestion : room.round.realQuestion;
+        let question;
+        if (room.gameType === 'whoSaid') {
+            question = room.round.realQuestion;
+        } else {
+            const isImposter = player.playerId === room.round.imposterPlayerId;
+            question = isImposter
+                ? room.round.imposterQuestion
+                : room.round.realQuestion;
+        }
         const playerSocket = io.sockets.sockets.get(player.socketId);
         if (playerSocket) {
             playerSocket.emit('game:yourPrompt', { question });
@@ -344,9 +578,16 @@ function syncGameStateToPlayer(io, room, playerId) {
     playerSocket.emit('room:restored', roomSnapshot(room, playerId));
 
     if (room.phase === 'ANSWER' && room.round) {
-        playerSocket.emit('game:phase', { code: room.code, phase: room.phase });
-        const isImposter = playerId === room.round.imposterPlayerId;
-        const question = isImposter ? room.round.imposterQuestion : room.round.realQuestion;
+        playerSocket.emit('game:phase', { code: room.code, phase: room.phase, gameType: room.gameType || 'imposter' });
+        let question;
+        if (room.gameType === 'whoSaid') {
+            question = room.round.realQuestion;
+        } else {
+            const isImposter = playerId === room.round.imposterPlayerId;
+            question = isImposter
+                ? room.round.imposterQuestion
+                : room.round.realQuestion;
+        }
         playerSocket.emit('game:yourPrompt', { question });
         if (room.round.answers.has(playerId)) {
             playerSocket.emit('game:answerAccepted');
@@ -357,15 +598,22 @@ function syncGameStateToPlayer(io, room, playerId) {
             allSubmitted: room.round.answers.size >= room.players.size,
         });
     } else if (room.phase === 'DISCUSS' && room.round) {
-        playerSocket.emit('game:answers', { answers: discussAnswersPayload(room) });
-        playerSocket.emit('game:voteProgress', {
-            submitted: room.round.votes.size,
-            total: room.players.size,
-        });
-        if (room.round.votes.has(playerId)) {
-            playerSocket.emit('game:voteAccepted');
+        if (room.gameType === 'whoSaid') {
+            broadcastWhoSaidStep(io, room);
+            if (room.round.currentGuesses.has(playerId)) {
+                playerSocket.emit('game:voteAccepted');
+            }
+        } else {
+            playerSocket.emit('game:answers', { answers: discussAnswersPayload(room) });
+            playerSocket.emit('game:voteProgress', {
+                submitted: room.round.votes.size,
+                total: room.players.size,
+            });
+            if (room.round.votes.has(playerId)) {
+                playerSocket.emit('game:voteAccepted');
+            }
         }
-        playerSocket.emit('game:phase', { code: room.code, phase: room.phase });
+        playerSocket.emit('game:phase', { code: room.code, phase: room.phase, gameType: room.gameType || 'imposter' });
     } else if (room.phase === 'REVEAL' && room.round) {
         playerSocket.emit('game:reveal', revealPayload(room));
         playerSocket.emit('game:playAgainProgress', {
@@ -375,7 +623,7 @@ function syncGameStateToPlayer(io, room, playerId) {
         if (room.playAgainReady?.has(playerId)) {
             playerSocket.emit('game:playAgainAccepted');
         }
-        playerSocket.emit('game:phase', { code: room.code, phase: room.phase });
+        playerSocket.emit('game:phase', { code: room.code, phase: room.phase, gameType: room.gameType || 'imposter' });
     }
 }
 
@@ -409,25 +657,35 @@ function pickImposterPlayerId(room, playerIds) {
 }
 
 function beginRound(io, room) {
-    const key = rosterKey(room);
-    const round = pickRandomRound(lastRoundIdByRoster.get(key));
-    lastRoundIdByRoster.set(key, round.id);
-    const playerIds = Array.from(room.players.keys());
-    const imposterPlayerId = pickImposterPlayerId(room, playerIds);
+    const roundKey = rosterRoundKey(room);
+    const gameType = room.gameType || 'imposter';
+    const round = pickRandomRound(lastRoundIdByRoster.get(roundKey), gameType);
+    lastRoundIdByRoster.set(roundKey, round.id);
 
     room.lastRoundId = round.id;
-    room.lastImposterPlayerId = imposterPlayerId;
     room.playAgainReady = new Set();
     room.rematchRosterSize = null;
 
-    room.round = {
-        roundId: round.id,
-        imposterPlayerId,
-        realQuestion: round.realQuestion,
-        imposterQuestion: round.imposterQuestion,
-        answers: new Map(),
-        votes: new Map(),
-    };
+    if (gameType === 'whoSaid') {
+        room.lastImposterPlayerId = null;
+        room.round = {
+            roundId: round.id,
+            realQuestion: round.realQuestion,
+            answers: new Map(),
+        };
+    } else {
+        const playerIds = Array.from(room.players.keys());
+        const imposterPlayerId = pickImposterPlayerId(room, playerIds);
+        room.lastImposterPlayerId = imposterPlayerId;
+        room.round = {
+            roundId: round.id,
+            imposterPlayerId,
+            realQuestion: round.realQuestion,
+            imposterQuestion: round.imposterQuestion,
+            answers: new Map(),
+            votes: new Map(),
+        };
+    }
     room.phase = 'ANSWER';
 
     broadcastPhase(io, room);
@@ -503,7 +761,7 @@ function submitAnswer(socket, io, text) {
     return { ok: true };
 }
 
-function createRoom(socket, playerName) {
+function createRoom(socket, playerName, gameType) {
     const name = normalizeName(playerName);
     if (!name) {
         return { error: 'נא להזין שם תקין' };
@@ -514,6 +772,7 @@ function createRoom(socket, playerName) {
     const room = {
         code,
         hostPlayerId: playerId,
+        gameType: normalizeGameType(gameType),
         phase: 'LOBBY',
         players: new Map(),
         round: null,
@@ -623,6 +882,10 @@ function removePlayerFromRoom(io, room, playerId) {
         room.round.votes.delete(playerId);
     }
 
+    if (room.round?.currentGuesses?.has(playerId)) {
+        room.round.currentGuesses.delete(playerId);
+    }
+
     if (room.playAgainReady?.has(playerId)) {
         room.playAgainReady.delete(playerId);
     }
@@ -647,8 +910,17 @@ function removePlayerFromRoom(io, room, playerId) {
         broadcastAnswerProgress(io, room);
     }
     if (room.round && room.phase === 'DISCUSS') {
-        broadcastVoteProgress(io, room);
-        maybeAdvanceToReveal(io, room);
+        if (room.gameType === 'whoSaid') {
+            broadcastWhoSaidGuessProgress(io, room);
+            if (
+                room.round.currentGuesses.size >= whoSaidExpectedGuessCount(room)
+            ) {
+                completeWhoSaidStep(io, room);
+            }
+        } else {
+            broadcastVoteProgress(io, room);
+            maybeAdvanceToReveal(io, room);
+        }
         return;
     }
     if (room.phase === 'REVEAL') {
@@ -721,9 +993,9 @@ function handleDisconnect(io, socket) {
 }
 
 function registerRoomHandlers(io, socket) {
-    socket.on('room:create', ({ playerName }) => {
+    socket.on('room:create', ({ playerName, gameType }) => {
         leaveRoomVoluntary(io, socket);
-        const result = createRoom(socket, playerName);
+        const result = createRoom(socket, playerName, gameType);
         if (result.error) {
             socket.emit('room:error', { message: result.error });
             return;

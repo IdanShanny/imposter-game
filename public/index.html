@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>משחק המתחזה</title>
+    <title>משחקי חברים</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -13,8 +13,8 @@
 
     <div class="app-card">
         <header class="app-header">
-            <h1 class="app-title">משחק המתחזה</h1>
-            <p class="app-tagline">גלו מי מתחזה — משחק קצר לחברים</p>
+            <h1 class="app-title">משחקי חברים</h1>
+            <p class="app-tagline">המתחזה · מי אמר? — משחקים קצרים לחברים</p>
         </header>
 
         <div id="screenEntry" class="screen">
@@ -26,12 +26,20 @@
             <div class="field-group">
                 <input type="text" id="roomCode" placeholder="חמש ספרות" inputmode="numeric" maxlength="5">
             </div>
+            <label class="label" for="gameTypeSelect">סוג משחק (בעת יצירת חדר)</label>
+            <div class="field-group">
+                <select id="gameTypeSelect" class="select-input">
+                    <option value="imposter">המתחזה</option>
+                    <option value="whoSaid">מי אמר?</option>
+                </select>
+            </div>
             <button type="button" class="btn btn-primary" onclick="joinGame()">הצטרף לחדר</button>
             <button type="button" class="btn btn-secondary" onclick="createRoom()">צור חדר חדש</button>
             <p id="formError"></p>
         </div>
 
         <div id="screenLobby" class="screen hidden">
+            <p id="gameModeBadgeLobby" class="game-mode-badge hidden"></p>
             <h2 class="screen-title">לובי</h2>
             <p class="label">קוד החדר</p>
             <div id="lobbyCode"></div>
@@ -55,6 +63,7 @@
         </div>
 
         <div id="screenAnswer" class="screen hidden">
+            <p id="gameModeBadgeAnswer" class="game-mode-badge hidden"></p>
             <h2 class="screen-title">השאלה שלך</h2>
             <p id="promptText">טוען…</p>
             <textarea id="answerInput" rows="2" placeholder="תשובה קצרה…"></textarea>
@@ -64,25 +73,46 @@
         </div>
 
         <div id="screenDiscuss" class="screen hidden">
-            <h2 class="screen-title">דיון והצבעה</h2>
-            <p id="discussIntro">להלן התשובות של כולם. דנו ביניכם — ואז לחצו על מי שאתם חושבים שהוא המתחזה (לא על עצמכם).</p>
-            <ul id="discussList" class="list-cards"></ul>
-            <button type="button" id="confirmVoteBtn" class="btn btn-accent" disabled onclick="confirmDiscussVote()">אשר את הבחירה</button>
-            <p id="discussVoteStatus" class="hint"></p>
-            <p id="discussVoteProgress" class="hint"></p>
+            <h2 id="discussScreenTitle" class="screen-title">דיון והצבעה</h2>
+            <div id="discussImposterPanel">
+                <p id="discussIntro">להלן התשובות של כולם. דנו ביניכם — ואז לחצו על מי שאתם חושבים שהוא המתחזה (לא על עצמכם).</p>
+                <ul id="discussList" class="list-cards"></ul>
+                <button type="button" id="confirmVoteBtn" class="btn btn-accent" disabled onclick="confirmDiscussVote()">אשר את הבחירה</button>
+                <p id="discussVoteStatus" class="hint"></p>
+                <p id="discussVoteProgress" class="hint"></p>
+            </div>
+            <div id="discussWhoSaidPanel" class="hidden">
+                <div id="whoSaidLastResult" class="who-said-last-result hidden"></div>
+                <p id="whoSaidStepLabel" class="hint"></p>
+                <p id="whoSaidAnswerText" class="who-said-answer"></p>
+                <p id="whoSaidAuthorHint" class="hint hidden"></p>
+                <p class="label label-players">מי אמר את זה?</p>
+                <ul id="whoSaidPlayerList" class="list-cards"></ul>
+                <button type="button" id="confirmWhoSaidBtn" class="btn btn-accent" disabled onclick="confirmWhoSaidGuess()">אשר את הניחוש</button>
+                <p id="whoSaidGuessStatus" class="hint"></p>
+                <p id="whoSaidGuessProgress" class="hint"></p>
+            </div>
         </div>
 
         <div id="screenReveal" class="screen hidden">
-            <h2 class="screen-title">חשיפה</h2>
-            <p id="revealImposters"></p>
-            <p id="revealOutcome"></p>
-            <div id="revealQuestions" class="reveal-questions">
-                <p class="reveal-q-label">שאלה לשחקנים</p>
-                <p id="revealRealQuestion" class="reveal-q-text"></p>
-                <p class="reveal-q-label">שאלה למתחזה</p>
-                <p id="revealImposterQuestion" class="reveal-q-text imposter-q"></p>
+            <h2 class="screen-title">תוצאות</h2>
+            <div id="revealImposterBlock">
+                <p id="revealImposters"></p>
+                <p id="revealOutcome"></p>
+                <div id="revealQuestions" class="reveal-questions">
+                    <p class="reveal-q-label">שאלה לשחקנים</p>
+                    <p id="revealRealQuestion" class="reveal-q-text"></p>
+                    <p class="reveal-q-label">שאלה למתחזה</p>
+                    <p id="revealImposterQuestion" class="reveal-q-text imposter-q"></p>
+                </div>
+                <p class="label label-players">תשובות והצבעות</p>
             </div>
-            <p class="label label-players">תשובות והצבעות</p>
+            <div id="revealWhoSaidBlock" class="hidden">
+                <p id="revealWhoSaidWinners" class="reveal-winners"></p>
+                <p class="reveal-q-label">השאלה</p>
+                <p id="revealWhoSaidQuestion" class="reveal-q-text"></p>
+                <p class="label label-players">שחקנים ותשובות</p>
+            </div>
             <ul id="revealTallies" class="list-cards"></ul>
             <div class="reveal-actions">
                 <button type="button" id="playAgainBtn" class="btn btn-secondary" onclick="requestPlayAgainSame()">משחק נוסף עם אותם משתתפים</button>
@@ -134,12 +164,50 @@
         let clientIsHost = false;
         let lobbyPlayerCount = 0;
         let cachedDiscussAnswers = [];
+        let cachedWhoSaidStep = null;
         let cachedReveal = null;
         let clientPlayerId = null;
         let selectedDiscussTargetId = null;
         let discussVoteLocked = false;
         let playAgainRequested = false;
+        let clientGameType = 'imposter';
+        let clientPlayers = [];
+        let whoSaidIsAuthor = false;
+        let selectedWhoSaidTargetId = null;
+        let whoSaidGuessLocked = false;
         const MIN_PLAYERS_TO_START = 3;
+        const GAME_LABELS = {
+            imposter: 'המתחזה',
+            whoSaid: 'מי אמר?',
+        };
+
+        function setGameModeUI(gameType) {
+            clientGameType = gameType || 'imposter';
+            const label = GAME_LABELS[clientGameType] || GAME_LABELS.imposter;
+            ['gameModeBadgeLobby', 'gameModeBadgeAnswer'].forEach((id) => {
+                const el = document.getElementById(id);
+                el.textContent = label;
+                el.classList.remove('hidden');
+            });
+            const discussTitle = document.getElementById('discussScreenTitle');
+            if (clientGameType === 'whoSaid') {
+                discussTitle.textContent = 'מי אמר?';
+            } else {
+                discussTitle.textContent = 'דיון והצבעה';
+            }
+        }
+
+        function updateDiscussPanelsForGameType() {
+            const imposterPanel = document.getElementById('discussImposterPanel');
+            const whoSaidPanel = document.getElementById('discussWhoSaidPanel');
+            if (clientGameType === 'whoSaid') {
+                imposterPanel.classList.add('hidden');
+                whoSaidPanel.classList.remove('hidden');
+            } else {
+                imposterPanel.classList.remove('hidden');
+                whoSaidPanel.classList.add('hidden');
+            }
+        }
 
         function loadSession() {
             try {
@@ -170,7 +238,13 @@
             });
         }
 
-        function applyRoomState({ code, players, isHost, phase, sessionToken }) {
+        function applyRoomState({ code, players, isHost, phase, sessionToken, gameType }) {
+            if (gameType) {
+                setGameModeUI(gameType);
+            }
+            if (players) {
+                clientPlayers = players;
+            }
             if (sessionToken) {
                 const me = players?.find((p) => p.id === sessionToken);
                 const playerName = me?.name || getPlayerName() || loadSession()?.playerName;
@@ -188,8 +262,15 @@
             }
             if (phase === 'DISCUSS') {
                 prepareDiscussScreen();
+                updateDiscussPanelsForGameType();
                 showDiscussScreen();
-                renderDiscussGrid(cachedDiscussAnswers);
+                if (clientGameType === 'whoSaid') {
+                    if (cachedWhoSaidStep) {
+                        renderWhoSaidStep(cachedWhoSaidStep);
+                    }
+                } else {
+                    renderDiscussGrid(cachedDiscussAnswers);
+                }
                 return;
             }
             if (phase === 'REVEAL') {
@@ -304,20 +385,29 @@
         function showAnswerScreen() {
             hideAllScreens();
             document.getElementById('screenAnswer').classList.remove('hidden');
+            setGameModeUI(clientGameType);
             showFormError('');
         }
 
         function prepareDiscussScreen() {
             selectedDiscussTargetId = null;
             discussVoteLocked = false;
+            selectedWhoSaidTargetId = null;
+            whoSaidGuessLocked = false;
+            whoSaidIsAuthor = false;
             document.getElementById('confirmVoteBtn').disabled = true;
+            document.getElementById('confirmWhoSaidBtn').disabled = true;
             document.getElementById('discussVoteStatus').textContent = '';
             document.getElementById('discussVoteProgress').textContent = '';
+            document.getElementById('whoSaidGuessStatus').textContent = '';
+            document.getElementById('whoSaidGuessProgress').textContent = '';
+            document.getElementById('whoSaidAuthorHint').classList.add('hidden');
         }
 
         function showDiscussScreen() {
             hideAllScreens();
             document.getElementById('screenDiscuss').classList.remove('hidden');
+            updateDiscussPanelsForGameType();
             showFormError('');
         }
 
@@ -335,58 +425,84 @@
         }
 
         function renderReveal(data) {
-            const imposterNames = (data.imposters || []).map((p) => p.name);
-            const imposterEl = document.getElementById('revealImposters');
-            if (imposterNames.length === 1) {
-                imposterEl.textContent = `המתחזה: ${imposterNames[0]}`;
-            } else if (imposterNames.length > 1) {
-                imposterEl.textContent = `המתחזים: ${imposterNames.join(', ')}`;
-            } else {
-                imposterEl.textContent = 'לא נמצא מתחזה';
-            }
+            const isWhoSaid = data.gameType === 'whoSaid' || clientGameType === 'whoSaid';
+            document.getElementById('revealImposterBlock').classList.toggle('hidden', isWhoSaid);
+            document.getElementById('revealWhoSaidBlock').classList.toggle('hidden', !isWhoSaid);
 
-            const outcomeEl = document.getElementById('revealOutcome');
-            outcomeEl.classList.remove('outcome-win', 'outcome-lose');
-            if (data.civiliansWin) {
-                outcomeEl.textContent = 'הקבוצה זיהתה את המתחזה — ניצחון לשחקנים!';
-                outcomeEl.classList.add('outcome-win');
+            if (isWhoSaid) {
+                const winnerNames = (data.winners || []).map((w) => w.name);
+                const winnersEl = document.getElementById('revealWhoSaidWinners');
+                if (winnerNames.length === 0) {
+                    winnersEl.textContent = 'אין מנצחים';
+                } else if (winnerNames.length === 1) {
+                    winnersEl.textContent = `המנצח: ${winnerNames[0]} (${data.maxScore} ניחושים נכונים)`;
+                } else {
+                    winnersEl.textContent = `המנצחים: ${winnerNames.join(', ')} (${data.maxScore} ניחושים נכונים)`;
+                }
+                winnersEl.className = 'reveal-winners outcome-win';
+                document.getElementById('revealWhoSaidQuestion').textContent =
+                    data.realQuestion || '—';
             } else {
-                outcomeEl.textContent = 'המתחזה לא זוהה במלואו — ניצחון למתחזה';
-                outcomeEl.classList.add('outcome-lose');
-            }
+                const imposterNames = (data.imposters || []).map((p) => p.name);
+                const imposterEl = document.getElementById('revealImposters');
+                if (imposterNames.length === 1) {
+                    imposterEl.textContent = `המתחזה: ${imposterNames[0]}`;
+                } else if (imposterNames.length > 1) {
+                    imposterEl.textContent = `המתחזים: ${imposterNames.join(', ')}`;
+                } else {
+                    imposterEl.textContent = 'לא נמצא מתחזה';
+                }
 
-            document.getElementById('revealRealQuestion').textContent =
-                data.realQuestion || '—';
-            document.getElementById('revealImposterQuestion').textContent =
-                data.imposterQuestion || '—';
+                const outcomeEl = document.getElementById('revealOutcome');
+                outcomeEl.classList.remove('outcome-win', 'outcome-lose');
+                if (data.civiliansWin) {
+                    outcomeEl.textContent = 'הקבוצה זיהתה את המתחזה — ניצחון לשחקנים!';
+                    outcomeEl.classList.add('outcome-win');
+                } else {
+                    outcomeEl.textContent = 'המתחזה לא זוהה במלואו — ניצחון למתחזה';
+                    outcomeEl.classList.add('outcome-lose');
+                }
+
+                document.getElementById('revealRealQuestion').textContent =
+                    data.realQuestion || '—';
+                document.getElementById('revealImposterQuestion').textContent =
+                    data.imposterQuestion || '—';
+            }
 
             const list = document.getElementById('revealTallies');
             list.innerHTML = '';
             (data.tallies || []).forEach((row) => {
                 const li = document.createElement('li');
-                if (row.isImposter) {
+                if (!isWhoSaid && row.isImposter) {
                     li.className = 'imposter-mark';
                 }
                 const nameEl = document.createElement('div');
                 nameEl.className = 'reveal-player-name';
-                nameEl.textContent = row.name + (row.isImposter ? ' (מתחזה)' : '');
-                const guessEl = document.createElement('div');
-                guessEl.className = 'reveal-player-guess';
-                if (row.votedForName) {
-                    guessEl.textContent = `ניחש: ${row.votedForName}`;
-                } else {
-                    guessEl.textContent = 'לא ניחש';
+                nameEl.textContent = isWhoSaid
+                    ? row.name
+                    : row.name + (row.isImposter ? ' (מתחזה)' : '');
+                li.appendChild(nameEl);
+
+                if (!isWhoSaid) {
+                    const guessEl = document.createElement('div');
+                    guessEl.className = 'reveal-player-guess';
+                    guessEl.textContent = row.votedForName
+                        ? `ניחש: ${row.votedForName}`
+                        : 'לא ניחש';
+                    li.appendChild(guessEl);
                 }
+
                 const answerEl = document.createElement('div');
                 answerEl.className = 'reveal-player-answer';
                 answerEl.textContent = row.answer || '—';
-                const votesEl = document.createElement('div');
-                votesEl.className = 'reveal-player-votes';
-                votesEl.textContent = `${row.votes} הצבעות`;
-                li.appendChild(nameEl);
-                li.appendChild(guessEl);
                 li.appendChild(answerEl);
-                li.appendChild(votesEl);
+
+                const statsEl = document.createElement('div');
+                statsEl.className = 'reveal-player-votes';
+                statsEl.textContent = isWhoSaid
+                    ? `${row.timesCorrectlyGuessed} ניחשו אותו נכון · ${row.correctGuesses} ניחושים נכונים שלו`
+                    : `${row.votes} הצבעות`;
+                li.appendChild(statsEl);
                 list.appendChild(li);
             });
         }
@@ -447,9 +563,110 @@
             socket.emit('game:submitVote', { targetPlayerId: selectedDiscussTargetId });
         }
 
+        function renderWhoSaidLastResult(result) {
+            const box = document.getElementById('whoSaidLastResult');
+            if (!result) {
+                box.classList.add('hidden');
+                box.innerHTML = '';
+                return;
+            }
+            box.classList.remove('hidden');
+            let html = `<strong>התשובה:</strong> ${escapeHtml(result.answerText)}<br>`;
+            html += `<strong>אמר/ה:</strong> ${escapeHtml(result.authorName)}<br>`;
+            html += '<strong>ניחושים:</strong><ul class="who-said-guess-list">';
+            (result.guesses || []).forEach((g) => {
+                const mark = g.correct ? ' ✓' : '';
+                html += `<li>${escapeHtml(g.guesserName)} → ${escapeHtml(g.guessedName)}${mark}</li>`;
+            });
+            html += '</ul>';
+            box.innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function renderWhoSaidPlayerPicker() {
+            const list = document.getElementById('whoSaidPlayerList');
+            list.innerHTML = '';
+            clientPlayers.forEach((player) => {
+                const li = document.createElement('li');
+                li.dataset.playerId = player.id;
+                const canSelect =
+                    !whoSaidIsAuthor &&
+                    !whoSaidGuessLocked &&
+                    player.id !== clientPlayerId;
+                if (canSelect) {
+                    li.classList.add('discuss-selectable');
+                    li.tabIndex = 0;
+                    li.setAttribute('role', 'button');
+                    li.addEventListener('click', () => selectWhoSaidTarget(player.id));
+                }
+                if (player.id === selectedWhoSaidTargetId) {
+                    li.classList.add('discuss-selected');
+                }
+                li.textContent = player.name;
+                list.appendChild(li);
+            });
+        }
+
+        function renderWhoSaidStep(data) {
+            cachedWhoSaidStep = data;
+            renderWhoSaidLastResult(data.lastRoundResult);
+            document.getElementById('whoSaidStepLabel').textContent =
+                `תשובה ${data.stepIndex} מתוך ${data.stepTotal}`;
+            document.getElementById('whoSaidAnswerText').textContent =
+                data.answerText || '—';
+
+            const authorHint = document.getElementById('whoSaidAuthorHint');
+            const confirmBtn = document.getElementById('confirmWhoSaidBtn');
+            if (whoSaidIsAuthor) {
+                authorHint.textContent = 'זו התשובה שלך — ממתינים לניחושים של השאר';
+                authorHint.classList.remove('hidden');
+                confirmBtn.disabled = true;
+            } else {
+                authorHint.classList.add('hidden');
+                if (!whoSaidGuessLocked) {
+                    confirmBtn.disabled = !selectedWhoSaidTargetId;
+                }
+            }
+
+            renderWhoSaidPlayerPicker();
+            updateWhoSaidGuessProgress(data.guessProgress);
+        }
+
+        function updateWhoSaidGuessProgress({ submitted, total }) {
+            const el = document.getElementById('whoSaidGuessProgress');
+            if (submitted >= total) {
+                el.textContent = 'כולם ניחשו — עוברים לתשובה הבאה…';
+            } else {
+                el.textContent = `ניחשו ${submitted} מתוך ${total} שחקנים…`;
+            }
+        }
+
+        function selectWhoSaidTarget(playerId) {
+            if (whoSaidIsAuthor || whoSaidGuessLocked || playerId === clientPlayerId) {
+                return;
+            }
+            selectedWhoSaidTargetId = playerId;
+            renderWhoSaidPlayerPicker();
+            document.getElementById('confirmWhoSaidBtn').disabled = false;
+            document.getElementById('whoSaidGuessStatus').textContent = '';
+        }
+
+        function confirmWhoSaidGuess() {
+            if (whoSaidIsAuthor || !selectedWhoSaidTargetId || whoSaidGuessLocked) {
+                return;
+            }
+            socket.emit('game:submitVote', { targetPlayerId: selectedWhoSaidTargetId });
+        }
+
         function showLobby(code, players, isHost) {
             hideAllScreens();
             document.getElementById('screenLobby').classList.remove('hidden');
+            setGameModeUI(clientGameType);
             document.getElementById('lobbyCode').textContent = code;
             document.getElementById('lobbyQr').src = `/api/qr.png?code=${encodeURIComponent(code)}`;
             document.getElementById('copyFeedback').textContent = '';
@@ -464,6 +681,7 @@
                 })
                 .catch(() => {});
             renderPlayerList(players);
+            clientPlayers = players || clientPlayers;
             updateStartControls(players, isHost);
             showFormError('');
         }
@@ -515,14 +733,24 @@
             updateStartControls(players, clientIsHost);
         });
 
-        socket.on('game:phase', ({ phase }) => {
+        socket.on('game:phase', ({ phase, gameType }) => {
+            if (gameType) {
+                setGameModeUI(gameType);
+            }
             if (phase === 'ANSWER') {
                 prepareAnswerScreen();
                 showAnswerScreen();
             } else if (phase === 'DISCUSS') {
                 prepareDiscussScreen();
+                updateDiscussPanelsForGameType();
                 showDiscussScreen();
-                renderDiscussGrid(cachedDiscussAnswers);
+                if (clientGameType === 'whoSaid') {
+                    if (cachedWhoSaidStep) {
+                        renderWhoSaidStep(cachedWhoSaidStep);
+                    }
+                } else {
+                    renderDiscussGrid(cachedDiscussAnswers);
+                }
             } else if (phase === 'REVEAL') {
                 prepareRevealActions();
                 showRevealScreen();
@@ -534,10 +762,31 @@
 
         socket.on('game:answers', ({ answers }) => {
             cachedDiscussAnswers = answers || [];
-            renderDiscussGrid(cachedDiscussAnswers);
+            if (clientGameType !== 'whoSaid') {
+                renderDiscussGrid(cachedDiscussAnswers);
+            }
+        });
+
+        socket.on('game:whoSaidStep', (data) => {
+            selectedWhoSaidTargetId = null;
+            whoSaidGuessLocked = false;
+            document.getElementById('whoSaidGuessStatus').textContent = '';
+            document.getElementById('confirmWhoSaidBtn').disabled = true;
+            renderWhoSaidStep(data);
+        });
+
+        socket.on('game:whoSaidRole', ({ isAuthor }) => {
+            whoSaidIsAuthor = isAuthor;
+            if (cachedWhoSaidStep) {
+                renderWhoSaidStep(cachedWhoSaidStep);
+            }
         });
 
         socket.on('game:voteProgress', ({ submitted, total }) => {
+            if (clientGameType === 'whoSaid') {
+                updateWhoSaidGuessProgress({ submitted, total });
+                return;
+            }
             const el = document.getElementById('discussVoteProgress');
             if (submitted >= total) {
                 el.textContent = 'כולם בחרו — חושפים תוצאות…';
@@ -547,6 +796,15 @@
         });
 
         socket.on('game:voteAccepted', () => {
+            if (clientGameType === 'whoSaid') {
+                whoSaidGuessLocked = true;
+                document.getElementById('confirmWhoSaidBtn').disabled = true;
+                document.getElementById('whoSaidGuessStatus').textContent =
+                    'הניחוש נשלח! ממתינים לשאר השחקנים…';
+                document.getElementById('whoSaidGuessStatus').className = 'hint status-ok';
+                renderWhoSaidPlayerPicker();
+                return;
+            }
             discussVoteLocked = true;
             document.getElementById('confirmVoteBtn').disabled = true;
             document.getElementById('discussVoteStatus').textContent = 'הבחירה נשלחה! ממתינים לשאר השחקנים…';
@@ -581,8 +839,10 @@
 
         socket.on('game:answerProgress', ({ submitted, total, allSubmitted }) => {
             const el = document.getElementById('answerProgress');
+            const nextLabel =
+                clientGameType === 'whoSaid' ? 'עוברים לניחושים…' : 'עוברים לדיון…';
             if (allSubmitted) {
-                el.textContent = `כל השחקנים ענו (${submitted}/${total}). עוברים לדיון…`;
+                el.textContent = `כל השחקנים ענו (${submitted}/${total}). ${nextLabel}`;
             } else {
                 el.textContent = `ענו ${submitted} מתוך ${total} שחקנים…`;
             }
@@ -600,7 +860,10 @@
                 return;
             }
             if (discussVisible) {
-                const status = document.getElementById('discussVoteStatus');
+                const status =
+                    clientGameType === 'whoSaid'
+                        ? document.getElementById('whoSaidGuessStatus')
+                        : document.getElementById('discussVoteStatus');
                 status.textContent = message;
                 status.className = 'hint hint-error';
                 return;
@@ -660,7 +923,8 @@
             }
             showFormError('');
             sessionStorage.removeItem(SESSION_KEY);
-            socket.emit('room:create', { playerName: name });
+            const gameType = document.getElementById('gameTypeSelect').value;
+            socket.emit('room:create', { playerName: name, gameType });
         }
 
         function joinGame() {

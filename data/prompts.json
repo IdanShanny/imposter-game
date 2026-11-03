@@ -8,7 +8,14 @@
     {
       "id": "q2",
       "realQuestion": "מה המאכל האהוב עליך?",
-      "imposterQuestion": "ציין שם של מאכל כלשהו"
+      "imposterQuestion": "ציין שם של מאכל כלשהו",
+      "whoSaid": true
+    },
+    {
+      "id": "q8",
+      "realQuestion": "לאן היית רוצה לטוס לחופשה הבאה שלך?",
+      "imposterQuestion": "ציין יעד לחופשה",
+      "whoSaid": true
     },
     {
       "id": "q3",

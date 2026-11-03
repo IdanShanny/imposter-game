@@ -118,6 +118,71 @@ body {
     text-align: center;
 }
 
+.select-input {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 1rem;
+    color: var(--text);
+    background: var(--surface-soft);
+}
+
+.game-mode-badge {
+    display: inline-block;
+    margin: 0 auto var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--red-800);
+    background: linear-gradient(180deg, var(--red-100) 0%, var(--red-50) 100%);
+    border: 1px solid var(--red-200);
+    border-radius: 999px;
+    text-align: center;
+}
+
+.who-said-answer {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    line-height: 1.5;
+    margin: var(--space-2) 0 var(--space-3);
+    padding: var(--space-3);
+    text-align: right;
+    background: var(--red-50);
+    border-radius: var(--radius-md);
+    border-right: 3px solid var(--red-500);
+}
+
+.who-said-last-result {
+    text-align: right;
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    margin-bottom: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-soft);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.who-said-guess-list {
+    margin: var(--space-1) 0 0;
+    padding-right: 1.1rem;
+}
+
+.reveal-winners {
+    font-size: 1.125rem;
+    font-weight: 700;
+    margin: var(--space-2) 0 var(--space-3);
+    line-height: 1.45;
+}
+
+.app-card:has(#screenDiscuss:not(.hidden)) #whoSaidPlayerList {
+    max-height: min(32vh, 220px);
+    overflow-y: auto;
+}
+
 .screen-title {
     margin: 0 0 var(--space-1);
     font-size: 1.0625rem;
