@@ -209,6 +209,27 @@
             }
         }
 
+        function showWhoSaidWaiting(message) {
+            const text = message || 'טוען ניחוש…';
+            document.getElementById('whoSaidAnswerText').textContent = text;
+            document.getElementById('whoSaidStepLabel').textContent = '';
+            document.getElementById('whoSaidPlayerList').innerHTML = '';
+            document.getElementById('whoSaidPlayerList').classList.remove('hidden');
+            document.getElementById('confirmWhoSaidBtn').disabled = true;
+            document.getElementById('confirmWhoSaidBtn').textContent = 'אשר את הניחוש';
+        }
+
+        function showWhoSaidReconnectHint() {
+            const discussVisible = !document.getElementById('screenDiscuss').classList.contains('hidden');
+            if (!discussVisible || clientGameType !== 'whoSaid') {
+                return;
+            }
+            showWhoSaidWaiting('מתחבר מחדש…');
+            document.getElementById('whoSaidGuessStatus').textContent =
+                'ממתינים לסנכרון מהשרת…';
+            document.getElementById('whoSaidGuessStatus').className = 'hint pending';
+        }
+
         function loadSession() {
             try {
                 const raw = sessionStorage.getItem(SESSION_KEY);
@@ -267,6 +288,8 @@
                 if (clientGameType === 'whoSaid') {
                     if (cachedWhoSaidStep) {
                         renderWhoSaidStep(cachedWhoSaidStep);
+                    } else {
+                        showWhoSaidWaiting();
                     }
                 } else {
                     renderDiscussGrid(cachedDiscussAnswers);
@@ -293,6 +316,7 @@
             if (socket.active) {
                 realtimeEl.textContent = 'מתחבר מחדש…';
                 realtimeEl.className = 'pending';
+                showWhoSaidReconnectHint();
                 return;
             }
             realtimeEl.textContent = 'מנותק מהשרת';
@@ -305,6 +329,7 @@
         socket.io.on('reconnect', () => {
             realtimeEl.textContent = 'מחובר בזמן אמת';
             realtimeEl.className = 'ok';
+            tryRejoinSession();
         });
 
         function getPlayerName() {
@@ -761,6 +786,8 @@
                 if (clientGameType === 'whoSaid') {
                     if (cachedWhoSaidStep) {
                         renderWhoSaidStep(cachedWhoSaidStep);
+                    } else {
+                        showWhoSaidWaiting();
                     }
                 } else {
                     renderDiscussGrid(cachedDiscussAnswers);
@@ -858,6 +885,17 @@
         });
 
         socket.on('room:error', ({ message }) => {
+            const session = loadSession();
+            const roomLost =
+                session &&
+                (message.includes('חדר לא נמצא') ||
+                    message.includes('לא ניתן להתחבר מחדש'));
+            if (roomLost) {
+                sessionStorage.removeItem(SESSION_KEY);
+                resetToEntryScreen();
+                showFormError(message);
+                return;
+            }
             const revealVisible = !document.getElementById('screenReveal').classList.contains('hidden');
             const discussVisible = !document.getElementById('screenDiscuss').classList.contains('hidden');
             const answerVisible = !document.getElementById('screenAnswer').classList.contains('hidden');

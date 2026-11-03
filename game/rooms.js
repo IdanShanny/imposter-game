@@ -208,14 +208,14 @@ function buildWhoSaidLastResult(room) {
     return { answerText, authorName, guesses: guessRows };
 }
 
-function broadcastWhoSaidStep(io, room) {
+function buildWhoSaidStepPayload(room, viewerPlayerId) {
     const authorId = currentWhoSaidAuthorId(room);
     const answerEntry = authorId ? room.round.answers.get(authorId) : null;
     const lastRoundResult = buildWhoSaidLastResult(room);
     const stepTotal = room.round.guessOrder.length;
     const stepIndex = room.round.guessIndex + 1;
 
-    const shared = {
+    return {
         stepIndex,
         stepTotal,
         answerText: answerEntry?.text || '',
@@ -225,19 +225,26 @@ function broadcastWhoSaidStep(io, room) {
             submitted: room.round.currentGuesses.size,
             total: whoSaidExpectedGuessCount(room),
         },
+        isAuthor: viewerPlayerId === authorId,
     };
+}
 
-    for (const player of room.players.values()) {
-        if (!player.connected || !player.socketId) continue;
-        const playerSocket = io.sockets.sockets.get(player.socketId);
-        if (playerSocket) {
-            playerSocket.emit('game:whoSaidStep', {
-                ...shared,
-                isAuthor: player.playerId === authorId,
-            });
-        }
+function emitWhoSaidStepToPlayer(io, room, playerId) {
+    const player = room.players.get(playerId);
+    if (!player?.connected || !player.socketId) {
+        return;
     }
+    const playerSocket = io.sockets.sockets.get(player.socketId);
+    if (!playerSocket) {
+        return;
+    }
+    playerSocket.emit('game:whoSaidStep', buildWhoSaidStepPayload(room, playerId));
+}
 
+function broadcastWhoSaidStep(io, room) {
+    for (const player of room.players.values()) {
+        emitWhoSaidStepToPlayer(io, room, player.playerId);
+    }
     broadcastWhoSaidGuessProgress(io, room);
 }
 
@@ -632,8 +639,13 @@ function syncGameStateToPlayer(io, room, playerId) {
             allSubmitted: room.round.answers.size >= room.players.size,
         });
     } else if (room.phase === 'DISCUSS' && room.round) {
+        playerSocket.emit('game:phase', {
+            code: room.code,
+            phase: room.phase,
+            gameType: room.gameType || 'imposter',
+        });
         if (room.gameType === 'whoSaid') {
-            broadcastWhoSaidStep(io, room);
+            emitWhoSaidStepToPlayer(io, room, playerId);
             if (room.round.currentGuesses.has(playerId)) {
                 playerSocket.emit('game:voteAccepted');
             }
@@ -647,7 +659,6 @@ function syncGameStateToPlayer(io, room, playerId) {
                 playerSocket.emit('game:voteAccepted');
             }
         }
-        playerSocket.emit('game:phase', { code: room.code, phase: room.phase, gameType: room.gameType || 'imposter' });
     } else if (room.phase === 'REVEAL' && room.round) {
         playerSocket.emit('game:reveal', revealPayload(room));
         playerSocket.emit('game:playAgainProgress', {
@@ -1026,8 +1037,18 @@ function handleDisconnect(io, socket) {
     broadcastPlayers(io, room);
 }
 
+function safeSocketHandler(label, fn) {
+    return (...args) => {
+        try {
+            fn(...args);
+        } catch (err) {
+            console.error(`Socket handler error (${label}):`, err);
+        }
+    };
+}
+
 function registerRoomHandlers(io, socket) {
-    socket.on('room:create', ({ playerName, gameType }) => {
+    socket.on('room:create', safeSocketHandler('room:create', ({ playerName, gameType }) => {
         leaveRoomVoluntary(io, socket);
         const result = createRoom(socket, playerName, gameType);
         if (result.error) {
@@ -1037,9 +1058,9 @@ function registerRoomHandlers(io, socket) {
 
         socket.emit('room:created', roomSnapshot(result.room, result.playerId));
         broadcastPlayers(io, result.room);
-    });
+    }));
 
-    socket.on('room:join', ({ code, playerName }) => {
+    socket.on('room:join', safeSocketHandler('room:join', ({ code, playerName }) => {
         leaveRoomVoluntary(io, socket);
         const result = joinRoom(socket, code, playerName);
         if (result.error) {
@@ -1049,9 +1070,9 @@ function registerRoomHandlers(io, socket) {
 
         socket.emit('room:joined', roomSnapshot(result.room, result.playerId));
         broadcastPlayers(io, result.room);
-    });
+    }));
 
-    socket.on('room:rejoin', ({ code, playerName, sessionToken }) => {
+    socket.on('room:rejoin', safeSocketHandler('room:rejoin', ({ code, playerName, sessionToken }) => {
         const result = rejoinRoom(socket, code, playerName, sessionToken);
         if (result.error) {
             socket.emit('room:error', { message: result.error });
@@ -1060,50 +1081,50 @@ function registerRoomHandlers(io, socket) {
 
         syncGameStateToPlayer(io, result.room, result.playerId);
         broadcastPlayers(io, result.room);
-    });
+    }));
 
-    socket.on('game:start', () => {
+    socket.on('game:start', safeSocketHandler('game:start', () => {
         const result = startGame(socket, io);
         if (result.error) {
             socket.emit('room:error', { message: result.error });
             return;
         }
-    });
+    }));
 
-    socket.on('game:submitAnswer', ({ text }) => {
+    socket.on('game:submitAnswer', safeSocketHandler('game:submitAnswer', ({ text }) => {
         const result = submitAnswer(socket, io, text);
         if (result.error) {
             socket.emit('room:error', { message: result.error });
             return;
         }
         socket.emit('game:answerAccepted');
-    });
+    }));
 
-    socket.on('game:requestPlayAgain', () => {
+    socket.on('game:requestPlayAgain', safeSocketHandler('game:requestPlayAgain', () => {
         const result = requestPlayAgain(socket, io);
         if (result.error) {
             socket.emit('room:error', { message: result.error });
             return;
         }
         socket.emit('game:playAgainAccepted');
-    });
+    }));
 
-    socket.on('game:submitVote', ({ targetPlayerId }) => {
+    socket.on('game:submitVote', safeSocketHandler('game:submitVote', ({ targetPlayerId }) => {
         const result = submitVote(socket, io, targetPlayerId);
         if (result.error) {
             socket.emit('room:error', { message: result.error });
             return;
         }
         socket.emit('game:voteAccepted');
-    });
+    }));
 
-    socket.on('room:leave', () => {
+    socket.on('room:leave', safeSocketHandler('room:leave', () => {
         leaveRoomVoluntary(io, socket);
-    });
+    }));
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', safeSocketHandler('disconnect', () => {
         handleDisconnect(io, socket);
-    });
+    }));
 }
 
 module.exports = { registerRoomHandlers };

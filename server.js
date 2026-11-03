@@ -8,12 +8,20 @@ app.set('trust proxy', 1);
 const { registerRoomHandlers } = require('./game/rooms');
 
 const PORT = process.env.PORT || 3000;
-const VERSION = '2.1.0';
+const VERSION = '2.1.1';
 
 const server = http.createServer(app);
 const io = new Server(server, {
     pingTimeout: 60000,
     pingInterval: 25000,
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception (process kept alive):', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled rejection (process kept alive):', reason);
 });
 
 io.on('connection', (socket) => {
