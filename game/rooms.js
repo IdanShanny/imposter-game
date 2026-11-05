@@ -644,9 +644,6 @@ function requestPlayAgain(socket, io) {
     }
 
     if (room.gameType === 'toDavar') {
-        if (room.toDavarLastMatched) {
-            return { error: 'הצלחתם! אפשר להתחיל משחק חדש' };
-        }
         beginRound(io, room);
         return { ok: true };
     }

@@ -605,7 +605,7 @@
             const isWhoSaid = data.gameType === 'whoSaid' || clientGameType === 'whoSaid';
             const isToDavar = data.gameType === 'toDavar' || clientGameType === 'toDavar';
             const playAgainBtn = document.getElementById('playAgainBtn');
-            playAgainBtn.classList.toggle('hidden', isToDavar);
+            playAgainBtn.classList.remove('hidden');
             document.getElementById('revealImposterBlock').classList.toggle(
                 'hidden',
                 isWhoSaid || isToDavar,
