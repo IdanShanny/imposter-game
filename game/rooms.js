@@ -8,6 +8,10 @@ const MAX_ANSWER_LENGTH = 120;
 const MIN_PLAYERS_TO_START = 3;
 const DISCONNECT_GRACE_MS = 5 * 60 * 1000;
 
+function minPlayersForGameType(gameType) {
+    return gameType === 'toDavar' ? 2 : MIN_PLAYERS_TO_START;
+}
+
 function normalizeGameType(value) {
     if (value === 'whoSaid' || value === 'toDavar') {
         return value;
@@ -117,7 +121,7 @@ function broadcastPlayers(io, room) {
         code: room.code,
         phase: room.phase,
         players: playersPayload(room),
-        minPlayersToStart: MIN_PLAYERS_TO_START,
+        minPlayersToStart: minPlayersForGameType(room.gameType),
     });
 }
 
@@ -219,13 +223,7 @@ function whoSaidExpectedGuessCount(room) {
 }
 
 function toDavarExpectedSubmissionCount(room) {
-    let count = 0;
-    for (const player of room.players.values()) {
-        if (player.connected) {
-            count += 1;
-        }
-    }
-    return count;
+    return room.players.size;
 }
 
 function whoSaidRevealPayload(room) {
@@ -671,10 +669,7 @@ function requestPlayAgain(socket, io) {
 
 function maybeAdvanceToDiscuss(io, room) {
     if (room.phase !== 'ANSWER' || !room.round) return;
-    const expected = room.gameType === 'toDavar'
-        ? toDavarExpectedSubmissionCount(room)
-        : room.players.size;
-    if (room.round.answers.size < expected) return;
+    if (room.round.answers.size < room.players.size) return;
     if (room.gameType === 'toDavar') {
         beginToDavarReveal(io, room);
     } else if (room.gameType === 'whoSaid') {
@@ -762,7 +757,7 @@ function roomSnapshot(room, playerId) {
         players: playersPayload(room),
         isHost: room.hostPlayerId === playerId,
         sessionToken: playerId,
-        minPlayersToStart: MIN_PLAYERS_TO_START,
+        minPlayersToStart: minPlayersForGameType(room.gameType),
         roundId: room.round?.roundId ?? null,
         toDavarUsedWords: room.gameType === 'toDavar'
             ? Array.from(room.toDavarUsedWords?.values() || [])
@@ -1022,8 +1017,9 @@ function startGame(socket, io) {
         return { error: 'המשחק כבר התחיל' };
     }
 
-    if (room.players.size < MIN_PLAYERS_TO_START) {
-        return { error: `נדרשים לפחות ${MIN_PLAYERS_TO_START} שחקנים` };
+    const minPlayers = minPlayersForGameType(room.gameType);
+    if (room.players.size < minPlayers) {
+        return { error: `נדרשים לפחות ${minPlayers} שחקנים` };
     }
 
     beginRound(io, room);
