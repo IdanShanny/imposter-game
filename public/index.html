@@ -1202,6 +1202,13 @@
             socket.emit('game:submitAnswer', { text });
         }
 
+        document.getElementById('answerInput').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                submitAnswer();
+            }
+        });
+
         function createRoom() {
             const name = getPlayerName();
             if (!name) {
