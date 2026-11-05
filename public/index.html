@@ -82,6 +82,7 @@
                 <p id="discussVoteProgress" class="hint"></p>
             </div>
             <div id="discussWhoSaidPanel" class="hidden">
+                <p id="whoSaidYourFeedback" class="who-said-your-feedback hidden" aria-live="polite"></p>
                 <div id="whoSaidLastResult" class="who-said-last-result hidden"></div>
                 <p id="whoSaidStepLabel" class="hint"></p>
                 <p id="whoSaidAnswerText" class="who-said-answer"></p>
@@ -284,6 +285,30 @@
             });
         }
 
+        function requestActiveScreenResync() {
+            if (!loadSession()?.code || !socket.connected) {
+                return;
+            }
+            const answerVisible = !document.getElementById('screenAnswer').classList.contains('hidden');
+            const discussVisible = !document.getElementById('screenDiscuss').classList.contains('hidden');
+            if (answerVisible) {
+                const promptEl = document.getElementById('promptText');
+                if (!cachedPromptQuestion || promptEl.textContent === 'טוען…') {
+                    socket.emit('game:requestPrompt');
+                }
+            }
+            if (discussVisible && clientGameType === 'whoSaid') {
+                const answerText = document.getElementById('whoSaidAnswerText').textContent;
+                const stuckOnGuess =
+                    !cachedWhoSaidStep ||
+                    answerText === 'טוען ניחוש…' ||
+                    answerText === 'מתחבר מחדש…';
+                if (stuckOnGuess) {
+                    socket.emit('game:requestWhoSaidStep');
+                }
+            }
+        }
+
         function applyRoomState({ code, players, isHost, phase, sessionToken, gameType, roundId }) {
             if (gameType) {
                 setGameModeUI(gameType);
@@ -326,6 +351,7 @@
                     } else {
                         showWhoSaidWaiting();
                     }
+                    socket.emit('game:requestWhoSaidStep');
                 } else {
                     renderDiscussGrid(cachedDiscussAnswers);
                 }
@@ -373,6 +399,15 @@
             realtimeEl.textContent = 'מחובר בזמן אמת';
             realtimeEl.className = 'ok';
             tryRejoinSession();
+            setTimeout(requestActiveScreenResync, 400);
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') {
+                return;
+            }
+            tryRejoinSession();
+            setTimeout(requestActiveScreenResync, 400);
         });
 
         function getPlayerName() {
@@ -642,23 +677,28 @@
             socket.emit('game:submitVote', { targetPlayerId: selectedDiscussTargetId });
         }
 
-        function renderWhoSaidLastResult(result) {
-            const box = document.getElementById('whoSaidLastResult');
-            if (!result) {
-                box.classList.add('hidden');
-                box.innerHTML = '';
+        function renderWhoSaidYourFeedback(feedback) {
+            const el = document.getElementById('whoSaidYourFeedback');
+            if (!feedback) {
+                el.classList.add('hidden');
+                el.textContent = '';
+                el.className = 'who-said-your-feedback hidden';
                 return;
             }
-            box.classList.remove('hidden');
-            let html = `<strong>התשובה:</strong> ${escapeHtml(result.answerText)}<br>`;
-            html += `<strong>אמר/ה:</strong> ${escapeHtml(result.authorName)}<br>`;
-            html += '<strong>ניחושים:</strong><ul class="who-said-guess-list">';
-            (result.guesses || []).forEach((g) => {
-                const mark = g.correct ? ' ✓' : '';
-                html += `<li>${escapeHtml(g.guesserName)} → ${escapeHtml(g.guessedName)}${mark}</li>`;
-            });
-            html += '</ul>';
-            box.innerHTML = html;
+            el.classList.remove('hidden');
+            if (feedback.correct) {
+                el.className = 'who-said-your-feedback who-said-feedback-ok';
+                el.textContent = `צדקת! (${feedback.authorName} אמר/ה את התשובה הקודמת)`;
+            } else {
+                el.className = 'who-said-your-feedback who-said-feedback-miss';
+                el.textContent = `טעית — אמר/ה ${feedback.authorName}`;
+            }
+        }
+
+        function renderWhoSaidLastResult(result) {
+            const box = document.getElementById('whoSaidLastResult');
+            box.classList.add('hidden');
+            box.innerHTML = '';
         }
 
         function escapeHtml(text) {
@@ -700,6 +740,7 @@
                 whoSaidIsAuthor = data.isAuthor;
             }
             cachedWhoSaidStep = data;
+            renderWhoSaidYourFeedback(data.yourPreviousGuess);
             renderWhoSaidLastResult(data.lastRoundResult);
             document.getElementById('whoSaidStepLabel').textContent =
                 `תשובה ${data.stepIndex} מתוך ${data.stepTotal}`;
@@ -854,6 +895,7 @@
                     } else {
                         showWhoSaidWaiting();
                     }
+                    socket.emit('game:requestWhoSaidStep');
                 } else {
                     renderDiscussGrid(cachedDiscussAnswers);
                 }

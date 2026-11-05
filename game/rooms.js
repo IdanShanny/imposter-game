@@ -239,6 +239,27 @@ function whoSaidRevealPayload(room) {
     };
 }
 
+function buildYourPreviousGuessFeedback(room, viewerPlayerId) {
+    const authorId = room.round.lastResultAuthorId;
+    if (!authorId || !room.round.lastResultGuesses) {
+        return null;
+    }
+    if (viewerPlayerId === authorId) {
+        return null;
+    }
+    const correctTargets = whoSaidCorrectTargetIds(room, authorId);
+    for (const [guesserId, targetId] of room.round.lastResultGuesses) {
+        if (guesserId !== viewerPlayerId) {
+            continue;
+        }
+        return {
+            correct: correctTargets.has(targetId),
+            authorName: room.players.get(authorId)?.name || '—',
+        };
+    }
+    return null;
+}
+
 function buildWhoSaidLastResult(room) {
     const authorId = room.round.lastResultAuthorId;
     if (!authorId) {
@@ -272,6 +293,7 @@ function buildWhoSaidStepPayload(room, viewerPlayerId) {
         gameType: 'whoSaid',
         answerText: answerEntry?.text || '',
         lastRoundResult,
+        yourPreviousGuess: buildYourPreviousGuessFeedback(room, viewerPlayerId),
         players: playersPayload(room),
         guessProgress: {
             submitted: room.round.currentGuesses.size,
@@ -283,14 +305,15 @@ function buildWhoSaidStepPayload(room, viewerPlayerId) {
 
 function emitWhoSaidStepToPlayer(io, room, playerId) {
     const player = room.players.get(playerId);
-    if (!player?.connected || !player.socketId) {
-        return;
+    if (!player?.socketId) {
+        return false;
     }
     const playerSocket = io.sockets.sockets.get(player.socketId);
     if (!playerSocket) {
-        return;
+        return false;
     }
     playerSocket.emit('game:whoSaidStep', buildWhoSaidStepPayload(room, playerId));
+    return true;
 }
 
 function broadcastWhoSaidStep(io, room) {
@@ -656,6 +679,59 @@ function sendPromptsToPlayers(io, room) {
     }
 }
 
+function resyncWhoSaidStepToPlayer(socket, io) {
+    const code = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!code || !playerId) {
+        return { error: 'אינך בחדר' };
+    }
+    const room = rooms.get(code);
+    if (!room || room.phase !== 'DISCUSS' || room.gameType !== 'whoSaid' || !room.round) {
+        return { ok: true };
+    }
+    ensurePlayerSocketLinked(socket, room);
+    emitWhoSaidStepToPlayer(io, room, playerId);
+    if (room.round.currentGuesses.has(playerId)) {
+        socket.emit('game:voteAccepted', {
+            guessIndex: room.round.guessIndex,
+        });
+    }
+    return { ok: true };
+}
+
+function ensurePlayerSocketLinked(socket, room) {
+    const playerId = socket.data.playerId;
+    if (!playerId) {
+        return;
+    }
+    const player = room.players.get(playerId);
+    if (!player) {
+        return;
+    }
+    if (player.socketId !== socket.id) {
+        attachSocketToPlayer(socket, room, player);
+        return;
+    }
+    if (!player.connected) {
+        player.connected = true;
+    }
+}
+
+function resyncStateToPlayer(socket, io) {
+    const code = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!code || !playerId) {
+        return { ok: true };
+    }
+    const room = rooms.get(code);
+    if (!room) {
+        return { ok: true };
+    }
+    ensurePlayerSocketLinked(socket, room);
+    syncGameStateToPlayer(io, room, playerId);
+    return { ok: true };
+}
+
 function resyncPromptToPlayer(socket, io) {
     const code = socket.data.roomCode;
     const playerId = socket.data.playerId;
@@ -666,6 +742,7 @@ function resyncPromptToPlayer(socket, io) {
     if (!room || room.phase !== 'ANSWER' || !room.round) {
         return { ok: true };
     }
+    ensurePlayerSocketLinked(socket, room);
     emitPromptToPlayer(io, room, playerId);
     return { ok: true };
 }
@@ -1156,6 +1233,25 @@ function registerRoomHandlers(io, socket) {
 
     socket.on('game:requestPrompt', safeSocketHandler('game:requestPrompt', () => {
         const result = resyncPromptToPlayer(socket, io);
+        if (result.error) {
+            socket.emit('room:error', { message: result.error });
+        }
+    }));
+
+    socket.on('game:requestWhoSaidStep', safeSocketHandler('game:requestWhoSaidStep', () => {
+        const code = socket.data.roomCode;
+        const room = code ? rooms.get(code) : null;
+        if (room) {
+            ensurePlayerSocketLinked(socket, room);
+        }
+        const result = resyncWhoSaidStepToPlayer(socket, io);
+        if (result.error) {
+            socket.emit('room:error', { message: result.error });
+        }
+    }));
+
+    socket.on('game:requestStateSync', safeSocketHandler('game:requestStateSync', () => {
+        const result = resyncStateToPlayer(socket, io);
         if (result.error) {
             socket.emit('room:error', { message: result.error });
         }
