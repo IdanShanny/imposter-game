@@ -193,6 +193,7 @@
         let whoSaidDebugEnabled =
             new URLSearchParams(window.location.search).get('debug') === '1';
         const MIN_PLAYERS_TO_START = 3;
+        let minPlayersToStart = MIN_PLAYERS_TO_START;
         const GAME_LABELS = {
             imposter: 'המתחזה',
             whoSaid: 'מי אמר?',
@@ -358,9 +359,13 @@
             gameType,
             roundId,
             toDavarUsedWords,
+            minPlayersToStart: serverMinPlayers,
         }) {
             if (gameType) {
                 setGameModeUI(gameType);
+            }
+            if (serverMinPlayers) {
+                minPlayersToStart = serverMinPlayers;
             }
             if (Array.isArray(toDavarUsedWords)) {
                 renderToDavarUsedWords(toDavarUsedWords);
@@ -505,12 +510,12 @@
             }
 
             btn.classList.remove('hidden');
-            const canStart = players.length >= MIN_PLAYERS_TO_START;
+            const canStart = players.length >= minPlayersToStart;
             btn.disabled = !canStart;
             if (canStart) {
                 hint.textContent = 'לחץ להתחיל כשכולם מוכנים';
             } else {
-                hint.textContent = `נדרשים לפחות ${MIN_PLAYERS_TO_START} שחקנים (${players.length}/${MIN_PLAYERS_TO_START})`;
+                hint.textContent = `נדרשים לפחות ${minPlayersToStart} שחקנים (${players.length}/${minPlayersToStart})`;
             }
             hint.className = 'hint';
         }
@@ -945,9 +950,12 @@
             resetToEntryScreen();
         });
 
-        socket.on('room:players', ({ players, phase }) => {
+        socket.on('room:players', ({ players, phase, minPlayersToStart: serverMinPlayers }) => {
             if (players) {
                 clientPlayers = players;
+            }
+            if (serverMinPlayers) {
+                minPlayersToStart = serverMinPlayers;
             }
             if (phase === 'ANSWER' || phase === 'DISCUSS' || phase === 'REVEAL') {
                 return;
