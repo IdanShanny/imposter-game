@@ -14,7 +14,7 @@
     <div class="app-card">
         <header class="app-header">
             <h1 class="app-title">משחקי חברים</h1>
-            <p class="app-tagline">המתחזה · מי אמר? — משחקים קצרים לחברים</p>
+            <p class="app-tagline">המתחזה · מי אמר? · תו׳דבר — משחקים קצרים לחברים</p>
         </header>
 
         <div id="screenEntry" class="screen">
@@ -31,6 +31,7 @@
                 <select id="gameTypeSelect" class="select-input">
                     <option value="imposter">המתחזה</option>
                     <option value="whoSaid">מי אמר?</option>
+                    <option value="toDavar">תו׳דבר</option>
                 </select>
             </div>
             <button type="button" class="btn btn-primary" onclick="joinGame()">הצטרף לחדר</button>
@@ -64,8 +65,13 @@
 
         <div id="screenAnswer" class="screen hidden">
             <p id="gameModeBadgeAnswer" class="game-mode-badge hidden"></p>
-            <h2 class="screen-title">השאלה שלך</h2>
+            <h2 id="answerScreenTitle" class="screen-title">השאלה שלך</h2>
             <p id="promptText">טוען…</p>
+            <div id="toDavarAnswerPanel" class="hidden">
+                <p class="hint">בחרו מילה אחת בלבד. מילה שנעשה בה שימוש בסיבוב קודם אסורה.</p>
+                <p class="label label-players">מילים שכבר שומשו</p>
+                <ul id="toDavarUsedWords" class="word-history"></ul>
+            </div>
             <textarea id="answerInput" rows="2" placeholder="תשובה קצרה…"></textarea>
             <button type="button" id="submitAnswerBtn" class="btn btn-primary" onclick="submitAnswer()">שלח תשובה</button>
             <p id="answerStatus" class="hint"></p>
@@ -114,6 +120,11 @@
                 <p class="reveal-q-label">השאלה</p>
                 <p id="revealWhoSaidQuestion" class="reveal-q-text"></p>
                 <p class="label label-players">שחקנים ותשובות</p>
+            </div>
+            <div id="revealToDavarBlock" class="hidden">
+                <p id="revealToDavarOutcome" class="reveal-winners"></p>
+                <p id="revealToDavarRound" class="hint"></p>
+                <p class="label label-players">המילים שנבחרו</p>
             </div>
             <ul id="revealTallies" class="list-cards"></ul>
             <div class="reveal-actions">
@@ -185,6 +196,7 @@
         const GAME_LABELS = {
             imposter: 'המתחזה',
             whoSaid: 'מי אמר?',
+            toDavar: 'תו׳דבר',
         };
 
         function updateWhoSaidDebug(note) {
@@ -216,11 +228,22 @@
                 el.classList.remove('hidden');
             });
             const discussTitle = document.getElementById('discussScreenTitle');
+            const answerTitle = document.getElementById('answerScreenTitle');
             if (clientGameType === 'whoSaid') {
                 discussTitle.textContent = 'מי אמר?';
+            } else if (clientGameType === 'toDavar') {
+                discussTitle.textContent = 'תו׳דבר';
             } else {
                 discussTitle.textContent = 'דיון והצבעה';
             }
+            answerTitle.textContent =
+                clientGameType === 'toDavar' ? 'המילה שלך' : 'השאלה שלך';
+            document.getElementById('toDavarAnswerPanel').classList.toggle(
+                'hidden',
+                clientGameType !== 'toDavar',
+            );
+            document.getElementById('answerInput').placeholder =
+                clientGameType === 'toDavar' ? 'מילה אחת…' : 'תשובה קצרה…';
         }
 
         function updateDiscussPanelsForGameType() {
@@ -233,6 +256,23 @@
                 imposterPanel.classList.remove('hidden');
                 whoSaidPanel.classList.add('hidden');
             }
+        }
+
+        function renderToDavarUsedWords(words) {
+            const list = document.getElementById('toDavarUsedWords');
+            list.innerHTML = '';
+            if (!words?.length) {
+                const empty = document.createElement('li');
+                empty.textContent = 'עדיין אין מילים אסורות';
+                empty.className = 'word-history-empty';
+                list.appendChild(empty);
+                return;
+            }
+            words.forEach((word) => {
+                const item = document.createElement('li');
+                item.textContent = word;
+                list.appendChild(item);
+            });
         }
 
         function showWhoSaidWaiting(message) {
@@ -309,9 +349,21 @@
             }
         }
 
-        function applyRoomState({ code, players, isHost, phase, sessionToken, gameType, roundId }) {
+        function applyRoomState({
+            code,
+            players,
+            isHost,
+            phase,
+            sessionToken,
+            gameType,
+            roundId,
+            toDavarUsedWords,
+        }) {
             if (gameType) {
                 setGameModeUI(gameType);
+            }
+            if (Array.isArray(toDavarUsedWords)) {
+                renderToDavarUsedWords(toDavarUsedWords);
             }
             if (players) {
                 clientPlayers = players;
@@ -338,7 +390,9 @@
                 }
                 prepareAnswerScreen(roundId);
                 showAnswerScreen();
-                socket.emit('game:requestPrompt');
+                if (clientGameType !== 'toDavar') {
+                    socket.emit('game:requestPrompt');
+                }
                 return;
             }
             if (phase === 'DISCUSS') {
@@ -494,6 +548,9 @@
             document.getElementById('submitAnswerBtn').disabled = false;
             document.getElementById('answerStatus').textContent = '';
             document.getElementById('answerProgress').textContent = '';
+            if (clientGameType === 'toDavar') {
+                renderToDavarUsedWords([]);
+            }
         }
 
         function showAnswerScreen() {
@@ -529,6 +586,7 @@
             playAgainRequested = false;
             const btn = document.getElementById('playAgainBtn');
             btn.disabled = false;
+            btn.classList.remove('hidden');
             document.getElementById('playAgainProgress').textContent = '';
         }
 
@@ -540,8 +598,21 @@
 
         function renderReveal(data) {
             const isWhoSaid = data.gameType === 'whoSaid' || clientGameType === 'whoSaid';
-            document.getElementById('revealImposterBlock').classList.toggle('hidden', isWhoSaid);
-            document.getElementById('revealWhoSaidBlock').classList.toggle('hidden', !isWhoSaid);
+            const isToDavar = data.gameType === 'toDavar' || clientGameType === 'toDavar';
+            const playAgainBtn = document.getElementById('playAgainBtn');
+            playAgainBtn.classList.toggle('hidden', isToDavar);
+            document.getElementById('revealImposterBlock').classList.toggle(
+                'hidden',
+                isWhoSaid || isToDavar,
+            );
+            document.getElementById('revealWhoSaidBlock').classList.toggle(
+                'hidden',
+                !isWhoSaid,
+            );
+            document.getElementById('revealToDavarBlock').classList.toggle(
+                'hidden',
+                !isToDavar,
+            );
 
             if (isWhoSaid) {
                 const winnerNames = (data.winners || []).map((w) => w.name);
@@ -556,6 +627,21 @@
                 winnersEl.className = 'reveal-winners outcome-win';
                 document.getElementById('revealWhoSaidQuestion').textContent =
                     data.realQuestion || '—';
+            } else if (isToDavar) {
+                const outcomeEl = document.getElementById('revealToDavarOutcome');
+                outcomeEl.textContent = data.matched
+                    ? '🎉 הצלחתם — כולם בחרו באותה מילה!'
+                    : 'הפעם לא הסתנכרנתם — מנסים שוב עם מילה חדשה…';
+                outcomeEl.className = `reveal-winners ${
+                    data.matched ? 'outcome-win' : 'outcome-lose'
+                }`;
+                document.getElementById('revealToDavarRound').textContent =
+                    `סיבוב ${data.roundNumber} · ${data.matched ? 'ניצחון' : 'הסיבוב הסתיים'}`;
+                data.tallies = (data.words || []).map((word) => ({
+                    name: word.name,
+                    answer: word.word,
+                    toDavar: true,
+                }));
             } else {
                 const imposterNames = (data.imposters || []).map((p) => p.name);
                 const imposterEl = document.getElementById('revealImposters');
@@ -587,7 +673,7 @@
             list.innerHTML = '';
             (data.tallies || []).forEach((row) => {
                 const li = document.createElement('li');
-                if (!isWhoSaid && row.isImposter) {
+                if (!isWhoSaid && !isToDavar && row.isImposter) {
                     li.className = 'imposter-mark';
                 }
                 const nameEl = document.createElement('div');
@@ -597,7 +683,7 @@
                     : row.name + (row.isImposter ? ' (מתחזה)' : '');
                 li.appendChild(nameEl);
 
-                if (!isWhoSaid) {
+                if (!isWhoSaid && !isToDavar) {
                     const guessEl = document.createElement('div');
                     guessEl.className = 'reveal-player-guess';
                     guessEl.textContent = row.votedForName
@@ -615,7 +701,9 @@
                 statsEl.className = 'reveal-player-votes';
                 statsEl.textContent = isWhoSaid
                     ? `${row.timesCorrectlyGuessed} ניחשו אותו נכון · ${row.correctGuesses} ניחושים נכונים שלו`
-                    : `${row.votes} הצבעות`;
+                    : isToDavar
+                        ? ''
+                        : `${row.votes} הצבעות`;
                 li.appendChild(statsEl);
                 list.appendChild(li);
             });
@@ -884,7 +972,9 @@
                 }
                 prepareAnswerScreen(roundId);
                 showAnswerScreen();
-                socket.emit('game:requestPrompt');
+                if (clientGameType !== 'toDavar') {
+                    socket.emit('game:requestPrompt');
+                }
             } else if (phase === 'DISCUSS') {
                 prepareDiscussScreen();
                 updateDiscussPanelsForGameType();
@@ -1004,11 +1094,23 @@
         socket.on('game:answerProgress', ({ submitted, total, allSubmitted }) => {
             const el = document.getElementById('answerProgress');
             const nextLabel =
-                clientGameType === 'whoSaid' ? 'עוברים לניחושים…' : 'עוברים לדיון…';
+                clientGameType === 'whoSaid'
+                    ? 'עוברים לניחושים…'
+                    : clientGameType === 'toDavar'
+                        ? 'חושפים את המילים…'
+                        : 'עוברים לדיון…';
             if (allSubmitted) {
                 el.textContent = `כל השחקנים ענו (${submitted}/${total}). ${nextLabel}`;
             } else {
                 el.textContent = `ענו ${submitted} מתוך ${total} שחקנים…`;
+            }
+        });
+
+        socket.on('to-davar:used-words', ({ usedWords, roundNumber }) => {
+            renderToDavarUsedWords(usedWords);
+            if (clientGameType === 'toDavar') {
+                document.getElementById('promptText').textContent =
+                    `סיבוב ${roundNumber}: בחרו מילה אחת`;
             }
         });
 

@@ -9,7 +9,10 @@ const MIN_PLAYERS_TO_START = 3;
 const DISCONNECT_GRACE_MS = 5 * 60 * 1000;
 
 function normalizeGameType(value) {
-    return value === 'whoSaid' ? 'whoSaid' : 'imposter';
+    if (value === 'whoSaid' || value === 'toDavar') {
+        return value;
+    }
+    return 'imposter';
 }
 
 function rosterRoundKey(room) {
@@ -46,6 +49,23 @@ function normalizeName(name) {
 
 function normalizeAnswer(text) {
     return String(text || '').trim().slice(0, MAX_ANSWER_LENGTH);
+}
+
+function normalizeToDavarWord(text) {
+    const normalized = normalizeAnswer(text)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase('he');
+    if (normalized.length > 4 && normalized.endsWith('ים')) {
+        return normalized.slice(0, -2);
+    }
+    return normalized;
+}
+
+function isSingleWord(text) {
+    return normalizeAnswer(text).split(/\s+/).filter(Boolean).length === 1;
 }
 
 /** Compare answers for "who said?" duplicate matching */
@@ -194,6 +214,16 @@ function whoSaidExpectedGuessCount(room) {
             continue;
         }
         count += 1;
+    }
+    return count;
+}
+
+function toDavarExpectedSubmissionCount(room) {
+    let count = 0;
+    for (const player of room.players.values()) {
+        if (player.connected) {
+            count += 1;
+        }
     }
     return count;
 }
@@ -444,6 +474,9 @@ function broadcastVoteProgress(io, room) {
 }
 
 function revealPayload(room) {
+    if (room.gameType === 'toDavar') {
+        return toDavarRevealPayload(room);
+    }
     if (room.gameType === 'whoSaid') {
         return whoSaidRevealPayload(room);
     }
@@ -540,6 +573,10 @@ function disbandRoom(io, room, message) {
 }
 
 function beginRevealPhase(io, room) {
+    if (room.gameType === 'toDavar') {
+        beginToDavarReveal(io, room);
+        return;
+    }
     room.phase = 'REVEAL';
     room.playAgainReady = new Set();
     room.rematchRosterSize = room.players.size;
@@ -608,6 +645,14 @@ function requestPlayAgain(socket, io) {
         return { error: 'ניתן לבקש רק אחרי סיום הסיבוב' };
     }
 
+    if (room.gameType === 'toDavar') {
+        if (room.toDavarLastMatched) {
+            return { error: 'הצלחתם! אפשר להתחיל משחק חדש' };
+        }
+        beginRound(io, room);
+        return { ok: true };
+    }
+
     if (!room.playAgainReady) {
         room.playAgainReady = new Set();
     }
@@ -626,8 +671,13 @@ function requestPlayAgain(socket, io) {
 
 function maybeAdvanceToDiscuss(io, room) {
     if (room.phase !== 'ANSWER' || !room.round) return;
-    if (room.round.answers.size < room.players.size) return;
-    if (room.gameType === 'whoSaid') {
+    const expected = room.gameType === 'toDavar'
+        ? toDavarExpectedSubmissionCount(room)
+        : room.players.size;
+    if (room.round.answers.size < expected) return;
+    if (room.gameType === 'toDavar') {
+        beginToDavarReveal(io, room);
+    } else if (room.gameType === 'whoSaid') {
         beginWhoSaidGuessPhase(io, room);
     } else {
         beginDiscussPhase(io, room);
@@ -635,13 +685,72 @@ function maybeAdvanceToDiscuss(io, room) {
 }
 
 function broadcastAnswerProgress(io, room) {
-    const total = room.players.size;
+    const total = room.gameType === 'toDavar'
+        ? toDavarExpectedSubmissionCount(room)
+        : room.players.size;
     const submitted = room.round ? room.round.answers.size : 0;
     io.to(room.code).emit('game:answerProgress', {
         submitted,
         total,
         allSubmitted: submitted >= total,
     });
+}
+
+function broadcastToDavarUsedWords(io, room, socket = null) {
+    const payload = {
+        usedWords: Array.from(room.toDavarUsedWords?.values() || []),
+        roundNumber: room.toDavarRoundNumber || 1,
+    };
+    if (socket) {
+        socket.emit('to-davar:used-words', payload);
+    } else {
+        io.to(room.code).emit('to-davar:used-words', payload);
+    }
+}
+
+function toDavarRevealPayload(room) {
+    const answers = Array.from(room.round.answers.entries()).map(([playerId, entry]) => ({
+        playerId,
+        name: entry.name,
+        word: entry.text,
+    }));
+    const normalizedWords = new Set(
+        answers.map((answer) => normalizeToDavarWord(answer.word)),
+    );
+    const matched =
+        answers.length >= toDavarExpectedSubmissionCount(room) &&
+        normalizedWords.size === 1;
+    return {
+        gameType: 'toDavar',
+        roundNumber: room.toDavarRoundNumber,
+        matched,
+        words: answers,
+        usedWords: Array.from(room.toDavarUsedWords?.values() || []),
+        playerCount: answers.length,
+    };
+}
+
+function beginToDavarReveal(io, room) {
+    room.phase = 'REVEAL';
+    room.playAgainReady = new Set();
+    room.rematchRosterSize = room.players.size;
+    for (const entry of room.round.answers.values()) {
+        const normalized = normalizeToDavarWord(entry.text);
+        if (!room.toDavarUsedWords.has(normalized)) {
+            room.toDavarUsedWords.set(normalized, entry.text);
+        }
+    }
+    const payload = toDavarRevealPayload(room);
+    room.toDavarLastMatched = payload.matched;
+    broadcastReveal(io, room);
+    broadcastPhase(io, room);
+    if (!payload.matched) {
+        room.toDavarNextRoundTimer = setTimeout(() => {
+            if (rooms.get(room.code) === room && room.phase === 'REVEAL') {
+                beginRound(io, room);
+            }
+        }, 5000);
+    }
 }
 
 function roomSnapshot(room, playerId) {
@@ -655,6 +764,10 @@ function roomSnapshot(room, playerId) {
         sessionToken: playerId,
         minPlayersToStart: MIN_PLAYERS_TO_START,
         roundId: room.round?.roundId ?? null,
+        toDavarUsedWords: room.gameType === 'toDavar'
+            ? Array.from(room.toDavarUsedWords?.values() || [])
+            : [],
+        toDavarRoundNumber: room.toDavarRoundNumber || null,
     };
 }
 
@@ -757,8 +870,12 @@ function syncGameStateToPlayer(io, room, playerId) {
     playerSocket.emit('room:restored', roomSnapshot(room, playerId));
 
     if (room.phase === 'ANSWER' && room.round) {
-        emitPromptToPlayer(io, room, playerId);
         playerSocket.emit('game:phase', phasePayload(room));
+        if (room.gameType === 'toDavar') {
+            broadcastToDavarUsedWords(io, room, playerSocket);
+        } else {
+            emitPromptToPlayer(io, room, playerId);
+        }
         if (room.round.answers.has(playerId)) {
             playerSocket.emit('game:answerAccepted');
         }
@@ -780,7 +897,7 @@ function syncGameStateToPlayer(io, room, playerId) {
                     guessIndex: room.round.guessIndex,
                 });
             }
-        } else {
+        } else if (room.gameType === 'imposter') {
             playerSocket.emit('game:answers', { answers: discussAnswersPayload(room) });
             playerSocket.emit('game:voteProgress', {
                 submitted: room.round.votes.size,
@@ -799,7 +916,7 @@ function syncGameStateToPlayer(io, room, playerId) {
         if (room.playAgainReady?.has(playerId)) {
             playerSocket.emit('game:playAgainAccepted');
         }
-        playerSocket.emit('game:phase', { code: room.code, phase: room.phase, gameType: room.gameType || 'imposter' });
+        playerSocket.emit('game:phase', phasePayload(room));
     }
 }
 
@@ -833,8 +950,24 @@ function pickImposterPlayerId(room, playerIds) {
 }
 
 function beginRound(io, room) {
-    const roundKey = rosterRoundKey(room);
     const gameType = room.gameType || 'imposter';
+    if (room.toDavarNextRoundTimer) {
+        clearTimeout(room.toDavarNextRoundTimer);
+        room.toDavarNextRoundTimer = null;
+    }
+    if (gameType === 'toDavar') {
+        room.toDavarRoundNumber = (room.toDavarRoundNumber || 0) + 1;
+        room.round = {
+            roundId: `td-${room.toDavarRoundNumber}-${crypto.randomUUID()}`,
+            answers: new Map(),
+        };
+        room.phase = 'ANSWER';
+        broadcastPhase(io, room);
+        broadcastToDavarUsedWords(io, room);
+        broadcastAnswerProgress(io, room);
+        return;
+    }
+    const roundKey = rosterRoundKey(room);
     const round = pickRandomRound(lastRoundIdByRoster.get(roundKey), gameType);
     lastRoundIdByRoster.set(roundKey, round.id);
 
@@ -927,6 +1060,16 @@ function submitAnswer(socket, io, text) {
         return { error: 'נא להזין תשובה' };
     }
 
+    if (room.gameType === 'toDavar') {
+        if (!isSingleWord(answerText)) {
+            return { error: 'במשחק תו׳דבר יש להזין מילה אחת בלבד' };
+        }
+        const normalizedWord = normalizeToDavarWord(answerText);
+        if (room.toDavarUsedWords.has(normalizedWord)) {
+            return { error: 'המילה הזו כבר שומשה במשחק — נא לבחור מילה אחרת' };
+        }
+    }
+
     room.round.answers.set(playerId, {
         name: player.name,
         text: answerText,
@@ -956,6 +1099,10 @@ function createRoom(socket, playerName, gameType) {
         lastImposterPlayerId: null,
         playAgainReady: new Set(),
         rematchRosterSize: null,
+        toDavarUsedWords: new Map(),
+        toDavarRoundNumber: 0,
+        toDavarNextRoundTimer: null,
+        toDavarLastMatched: false,
     };
 
     room.players.set(playerId, {
@@ -1054,7 +1201,7 @@ function removePlayerFromRoom(io, room, playerId) {
         room.round.answers.delete(playerId);
     }
 
-    if (room.round?.votes.has(playerId)) {
+    if (room.round?.votes?.has(playerId)) {
         room.round.votes.delete(playerId);
     }
 
@@ -1084,6 +1231,7 @@ function removePlayerFromRoom(io, room, playerId) {
     broadcastPlayers(io, room);
     if (room.round && room.phase === 'ANSWER') {
         broadcastAnswerProgress(io, room);
+        maybeAdvanceToDiscuss(io, room);
     }
     if (room.round && room.phase === 'DISCUSS') {
         if (room.gameType === 'whoSaid') {
