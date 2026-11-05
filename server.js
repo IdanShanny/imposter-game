@@ -8,7 +8,7 @@ app.set('trust proxy', 1);
 const { registerRoomHandlers } = require('./game/rooms');
 
 const PORT = process.env.PORT || 3000;
-const VERSION = '2.2.3';
+const VERSION = '2.2.4';
 
 const server = http.createServer(app);
 const io = new Server(server, {

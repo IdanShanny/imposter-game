@@ -1059,7 +1059,7 @@ function submitAnswer(socket, io, text) {
         }
         const normalizedWord = normalizeToDavarWord(answerText);
         if (room.toDavarUsedWords.has(normalizedWord)) {
-            return { error: 'המילה הזו כבר שומשה במשחק — נא לבחור מילה אחרת' };
+            return { error: 'המילה הזו כבר הייתה במשחק — נא לבחור מילה אחרת' };
         }
     }
 

@@ -68,8 +68,8 @@
             <h2 id="answerScreenTitle" class="screen-title">השאלה שלך</h2>
             <p id="promptText">טוען…</p>
             <div id="toDavarAnswerPanel" class="hidden">
-                <p class="hint">בחרו מילה אחת בלבד. מילה שנעשה בה שימוש בסיבוב קודם אסורה.</p>
-                <p class="label label-players">מילים שכבר שומשו</p>
+                <p class="hint">בחרו מילה אחת בלבד. מילה שהייתה בסיבוב קודם אסורה.</p>
+                <p class="label label-players">מילים שכבר היו</p>
                 <ul id="toDavarUsedWords" class="word-history"></ul>
             </div>
             <textarea id="answerInput" rows="2" placeholder="תשובה קצרה…"></textarea>
@@ -130,7 +130,7 @@
             <div class="reveal-actions">
                 <button type="button" id="playAgainBtn" class="btn btn-secondary" onclick="requestPlayAgainSame()">משחק נוסף עם אותם משתתפים</button>
                 <p id="playAgainProgress" class="hint"></p>
-                <button type="button" class="btn btn-primary" onclick="startNewGame()">משחק חדש</button>
+                <button type="button" id="startNewGameBtn" class="btn btn-primary" onclick="startNewGame()">משחק חדש</button>
             </div>
         </div>
 
@@ -591,7 +591,8 @@
             playAgainRequested = false;
             const btn = document.getElementById('playAgainBtn');
             btn.disabled = false;
-            btn.classList.remove('hidden');
+            btn.classList.add('hidden');
+            document.getElementById('startNewGameBtn').classList.add('hidden');
             document.getElementById('playAgainProgress').textContent = '';
         }
 
@@ -605,7 +606,11 @@
             const isWhoSaid = data.gameType === 'whoSaid' || clientGameType === 'whoSaid';
             const isToDavar = data.gameType === 'toDavar' || clientGameType === 'toDavar';
             const playAgainBtn = document.getElementById('playAgainBtn');
-            playAgainBtn.classList.remove('hidden');
+            const showToDavarActions = !isToDavar || data.matched;
+            playAgainBtn.classList.toggle('hidden', !showToDavarActions);
+            document
+                .getElementById('startNewGameBtn')
+                .classList.toggle('hidden', !showToDavarActions);
             document.getElementById('revealImposterBlock').classList.toggle(
                 'hidden',
                 isWhoSaid || isToDavar,
