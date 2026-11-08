@@ -601,6 +601,8 @@ function submitVote(socket, io, targetPlayerId) {
         return { error: 'אין סיבוב פעיל' };
     }
 
+    ensurePlayerSocketLinked(socket, room);
+
     if (room.gameType === 'whoSaid') {
         return submitWhoSaidGuess(socket, io, targetPlayerId);
     }
@@ -639,6 +641,8 @@ function requestPlayAgain(socket, io) {
         return { error: 'אין סיבוב פעיל' };
     }
 
+    ensurePlayerSocketLinked(socket, room);
+
     if (room.phase !== 'REVEAL') {
         return { error: 'ניתן לבקש רק אחרי סיום הסיבוב' };
     }
@@ -676,16 +680,20 @@ function maybeAdvanceToDiscuss(io, room) {
     }
 }
 
-function broadcastAnswerProgress(io, room) {
+function answerProgressPayload(room) {
     const total = room.gameType === 'toDavar'
         ? toDavarExpectedSubmissionCount(room)
         : room.players.size;
     const submitted = room.round ? room.round.answers.size : 0;
-    io.to(room.code).emit('game:answerProgress', {
+    return {
         submitted,
         total,
         allSubmitted: submitted >= total,
-    });
+    };
+}
+
+function broadcastAnswerProgress(io, room) {
+    io.to(room.code).emit('game:answerProgress', answerProgressPayload(room));
 }
 
 function broadcastToDavarUsedWords(io, room, socket = null) {
@@ -833,7 +841,14 @@ function resyncStateToPlayer(socket, io) {
         return { ok: true };
     }
     ensurePlayerSocketLinked(socket, room);
-    syncGameStateToPlayer(io, room, playerId);
+    const player = room.players.get(playerId);
+    const playerSocket = player?.socketId
+        ? io.sockets.sockets.get(player.socketId)
+        : null;
+    if (playerSocket) {
+        playerSocket.emit('game:phase', phasePayload(room));
+    }
+    resyncEventsToPlayer(io, room, playerId);
     return { ok: true };
 }
 
@@ -852,17 +867,17 @@ function resyncPromptToPlayer(socket, io) {
     return { ok: true };
 }
 
-function syncGameStateToPlayer(io, room, playerId) {
+function resyncEventsToPlayer(io, room, playerId) {
     const player = room.players.get(playerId);
-    if (!player?.socketId) return;
-
+    if (!player?.socketId) {
+        return;
+    }
     const playerSocket = io.sockets.sockets.get(player.socketId);
-    if (!playerSocket) return;
-
-    playerSocket.emit('room:restored', roomSnapshot(room, playerId));
+    if (!playerSocket) {
+        return;
+    }
 
     if (room.phase === 'ANSWER' && room.round) {
-        playerSocket.emit('game:phase', phasePayload(room));
         if (room.gameType === 'toDavar') {
             broadcastToDavarUsedWords(io, room, playerSocket);
         } else {
@@ -871,17 +886,8 @@ function syncGameStateToPlayer(io, room, playerId) {
         if (room.round.answers.has(playerId)) {
             playerSocket.emit('game:answerAccepted');
         }
-        playerSocket.emit('game:answerProgress', {
-            submitted: room.round.answers.size,
-            total: room.players.size,
-            allSubmitted: room.round.answers.size >= room.players.size,
-        });
+        playerSocket.emit('game:answerProgress', answerProgressPayload(room));
     } else if (room.phase === 'DISCUSS' && room.round) {
-        playerSocket.emit('game:phase', {
-            code: room.code,
-            phase: room.phase,
-            gameType: room.gameType || 'imposter',
-        });
         if (room.gameType === 'whoSaid') {
             emitWhoSaidStepToPlayer(io, room, playerId);
             if (room.round.currentGuesses.has(playerId)) {
@@ -908,8 +914,18 @@ function syncGameStateToPlayer(io, room, playerId) {
         if (room.playAgainReady?.has(playerId)) {
             playerSocket.emit('game:playAgainAccepted');
         }
-        playerSocket.emit('game:phase', phasePayload(room));
     }
+}
+
+function syncGameStateToPlayer(io, room, playerId) {
+    const player = room.players.get(playerId);
+    if (!player?.socketId) return;
+
+    const playerSocket = io.sockets.sockets.get(player.socketId);
+    if (!playerSocket) return;
+
+    playerSocket.emit('room:restored', roomSnapshot(room, playerId));
+    resyncEventsToPlayer(io, room, playerId);
 }
 
 function pickImposterPlayerId(room, playerIds) {
@@ -1006,6 +1022,8 @@ function startGame(socket, io) {
         return { error: 'חדר לא נמצא' };
     }
 
+    ensurePlayerSocketLinked(socket, room);
+
     if (room.hostPlayerId !== playerId) {
         return { error: 'רק המארח יכול להתחיל את המשחק' };
     }
@@ -1034,6 +1052,8 @@ function submitAnswer(socket, io, text) {
     if (!room || !room.round) {
         return { error: 'אין סיבוב פעיל' };
     }
+
+    ensurePlayerSocketLinked(socket, room);
 
     if (room.phase !== 'ANSWER') {
         return { error: 'לא בשלב תשובות' };
@@ -1366,7 +1386,7 @@ function registerRoomHandlers(io, socket) {
     socket.on('game:submitAnswer', safeSocketHandler('game:submitAnswer', ({ text }) => {
         const result = submitAnswer(socket, io, text);
         if (result.error) {
-            socket.emit('room:error', { message: result.error });
+            socket.emit('game:answerRejected', { message: result.error });
             return;
         }
         socket.emit('game:answerAccepted');

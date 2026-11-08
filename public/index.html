@@ -72,6 +72,7 @@
                 <p class="label label-players">מילים שכבר היו</p>
                 <ul id="toDavarUsedWords" class="word-history"></ul>
             </div>
+            <p id="answerInputError" class="answer-input-error hidden" role="alert" aria-live="assertive"></p>
             <textarea id="answerInput" rows="2" placeholder="תשובה קצרה…"></textarea>
             <button type="button" id="submitAnswerBtn" class="btn btn-primary" onclick="submitAnswer()">שלח תשובה</button>
             <p id="answerStatus" class="hint"></p>
@@ -327,12 +328,18 @@
         }
 
         function requestActiveScreenResync() {
-            if (!loadSession()?.code || !socket.connected) {
+            const session = loadSession();
+            if (!session?.code || !socket.connected) {
                 return;
             }
+            const entryVisible = !document.getElementById('screenEntry').classList.contains('hidden');
+            if (entryVisible) {
+                return;
+            }
+            socket.emit('game:requestStateSync');
             const answerVisible = !document.getElementById('screenAnswer').classList.contains('hidden');
             const discussVisible = !document.getElementById('screenDiscuss').classList.contains('hidden');
-            if (answerVisible) {
+            if (answerVisible && clientGameType !== 'toDavar') {
                 const promptEl = document.getElementById('promptText');
                 if (!cachedPromptQuestion || promptEl.textContent === 'טוען…') {
                     socket.emit('game:requestPrompt');
@@ -350,6 +357,21 @@
             }
         }
 
+        function clearAnswerInputError() {
+            const el = document.getElementById('answerInputError');
+            el.textContent = '';
+            el.classList.add('hidden');
+        }
+
+        function showAnswerInputError(message) {
+            const el = document.getElementById('answerInputError');
+            el.textContent = message || '';
+            el.classList.toggle('hidden', !message);
+            if (message) {
+                el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+
         function applyRoomState({
             code,
             players,
@@ -359,6 +381,7 @@
             gameType,
             roundId,
             toDavarUsedWords,
+            toDavarRoundNumber,
             minPlayersToStart: serverMinPlayers,
         }) {
             if (gameType) {
@@ -395,7 +418,11 @@
                 }
                 prepareAnswerScreen(roundId);
                 showAnswerScreen();
-                if (clientGameType !== 'toDavar') {
+                if (clientGameType === 'toDavar') {
+                    const rn = toDavarRoundNumber || 1;
+                    document.getElementById('promptText').textContent =
+                        `סיבוב ${rn}: בחרו מילה אחת`;
+                } else {
                     socket.emit('game:requestPrompt');
                 }
                 return;
@@ -553,6 +580,7 @@
             document.getElementById('submitAnswerBtn').disabled = false;
             document.getElementById('answerStatus').textContent = '';
             document.getElementById('answerProgress').textContent = '';
+            clearAnswerInputError();
             if (clientGameType === 'toDavar') {
                 renderToDavarUsedWords([]);
             }
@@ -974,6 +1002,10 @@
                 setGameModeUI(gameType);
             }
             if (phase === 'ANSWER') {
+                const onAnswerScreen =
+                    !document.getElementById('screenAnswer').classList.contains('hidden');
+                const sameRound =
+                    roundId && activeAnswerRoundId === roundId;
                 cachedWhoSaidStep = null;
                 if (roundId) {
                     if (activeAnswerRoundId !== roundId) {
@@ -982,6 +1014,15 @@
                     } else {
                         activeAnswerRoundId = roundId;
                     }
+                }
+                if (onAnswerScreen && sameRound) {
+                    if (clientGameType !== 'toDavar') {
+                        const promptEl = document.getElementById('promptText');
+                        if (!cachedPromptQuestion || promptEl.textContent === 'טוען…') {
+                            socket.emit('game:requestPrompt');
+                        }
+                    }
+                    return;
                 }
                 prepareAnswerScreen(roundId);
                 showAnswerScreen();
@@ -1098,10 +1139,18 @@
         });
 
         socket.on('game:answerAccepted', () => {
+            clearAnswerInputError();
             document.getElementById('answerInput').disabled = true;
             document.getElementById('submitAnswerBtn').disabled = true;
             document.getElementById('answerStatus').textContent = 'התשובה נשלחה!';
             document.getElementById('answerStatus').className = 'hint status-ok';
+        });
+
+        socket.on('game:answerRejected', ({ message }) => {
+            showAnswerInputError(message);
+            const status = document.getElementById('answerStatus');
+            status.textContent = message;
+            status.className = 'hint hint-error';
         });
 
         socket.on('game:answerProgress', ({ submitted, total, allSubmitted }) => {
@@ -1139,6 +1188,10 @@
                 showFormError(message);
                 return;
             }
+            if (session?.code && message.includes('אינך בחדר')) {
+                tryRejoinSession();
+                setTimeout(requestActiveScreenResync, 400);
+            }
             const revealVisible = !document.getElementById('screenReveal').classList.contains('hidden');
             const discussVisible = !document.getElementById('screenDiscuss').classList.contains('hidden');
             const answerVisible = !document.getElementById('screenAnswer').classList.contains('hidden');
@@ -1159,6 +1212,7 @@
                 return;
             }
             if (answerVisible) {
+                showAnswerInputError(message);
                 const status = document.getElementById('answerStatus');
                 status.textContent = message;
                 status.className = 'hint hint-error';
@@ -1212,6 +1266,9 @@
                 event.preventDefault();
                 submitAnswer();
             }
+        });
+        document.getElementById('answerInput').addEventListener('input', () => {
+            clearAnswerInputError();
         });
 
         function createRoom() {
