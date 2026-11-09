@@ -1,6 +1,4 @@
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const { pickRandomRound } = require('./prompts');
 
 const rooms = new Map();
@@ -777,32 +775,9 @@ function roomSnapshot(room, playerId) {
     };
 }
 
-function getClientIp(socket) {
-    try {
-        const xff = socket.handshake?.headers?.['x-forwarded-for'];
-        if (xff) return xff.split(',')[0].trim();
-        return socket.request?.socket?.remoteAddress || socket.handshake?.address || null;
-    } catch {
-        return null;
-    }
-}
-
 function attachSocketToPlayer(socket, room, player) {
     player.socketId = socket.id;
     player.connected = true;
-    player.ip = getClientIp(socket);
-    try {
-        const logPath = path.join(__dirname, '..', 'data', 'player_ips.log');
-        const entry = JSON.stringify({
-            ts: new Date().toISOString(),
-            roomCode: room.code,
-            playerId: player.playerId,
-            name: player.name,
-            ip: player.ip,
-            action: 'attach'
-        }) + '\n';
-        fs.appendFile(logPath, entry, () => {});
-    } catch {}
     if (player.disconnectTimer) {
         clearTimeout(player.disconnectTimer);
         player.disconnectTimer = null;
