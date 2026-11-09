@@ -165,9 +165,13 @@ function emitPromptToPlayer(io, room, playerId) {
     if (!question) {
         return false;
     }
+    const isImposter =
+        room.gameType === 'imposter' &&
+        playerId === room.round.imposterPlayerId;
     playerSocket.emit('game:yourPrompt', {
         question,
         roundId: room.round.roundId,
+        isImposter,
     });
     return true;
 }

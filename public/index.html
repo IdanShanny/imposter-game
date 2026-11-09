@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>משחקי חברים</title>
+    <title>נפגשים</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -13,12 +13,12 @@
 
     <div class="app-card">
         <header class="app-header">
-            <h1 class="app-title">משחקי חברים</h1>
-            <p class="app-tagline">המתחזה · מי אמר? · תו׳דבר — משחקים קצרים לחברים</p>
+            <h1 class="app-title">נפגשים</h1>
+            <p class="app-tagline">המתחזה · מי אמר? · תו׳דבר</p>
         </header>
 
         <div id="screenEntry" class="screen">
-            <label class="label" for="username">שם מלא</label>
+            <label class="label" for="username">כינוי</label>
             <div class="field-group">
                 <input type="text" id="username" placeholder="איך קוראים לך?" autocomplete="nickname">
             </div>
@@ -66,6 +66,9 @@
         <div id="screenAnswer" class="screen hidden">
             <p id="gameModeBadgeAnswer" class="game-mode-badge hidden"></p>
             <h2 id="answerScreenTitle" class="screen-title">השאלה שלך</h2>
+            <p id="imposterRoleBanner" class="imposter-role-banner hidden" role="status" aria-live="polite">
+                🤫 ש… את.ה המתחזה!
+            </p>
             <p id="promptText">טוען…</p>
             <div id="toDavarAnswerPanel" class="hidden">
                 <p class="hint">בחרו מילה אחת בלבד. מילה שהייתה בסיבוב קודם אסורה.</p>
@@ -182,6 +185,7 @@
         let cachedReveal = null;
         let activeAnswerRoundId = null;
         let cachedPromptQuestion = null;
+        let cachedAnswerIsImposter = false;
         let clientPlayerId = null;
         let selectedDiscussTargetId = null;
         let discussVoteLocked = false;
@@ -562,7 +566,14 @@
             showFormError('');
         }
 
+        function applyImposterAnswerBanner() {
+            const el = document.getElementById('imposterRoleBanner');
+            const show = clientGameType === 'imposter' && cachedAnswerIsImposter;
+            el.classList.toggle('hidden', !show);
+        }
+
         function applyPromptToAnswerUI() {
+            applyImposterAnswerBanner();
             if (cachedPromptQuestion) {
                 document.getElementById('promptText').textContent = cachedPromptQuestion;
             }
@@ -573,6 +584,8 @@
             if (rid && rid === activeAnswerRoundId && cachedPromptQuestion) {
                 applyPromptToAnswerUI();
             } else {
+                cachedAnswerIsImposter = false;
+                document.getElementById('imposterRoleBanner').classList.add('hidden');
                 document.getElementById('promptText').textContent = 'טוען…';
             }
             document.getElementById('answerInput').value = '';
@@ -1130,8 +1143,9 @@
             renderReveal(data);
         });
 
-        socket.on('game:yourPrompt', ({ question, roundId }) => {
+        socket.on('game:yourPrompt', ({ question, roundId, isImposter }) => {
             cachedPromptQuestion = question;
+            cachedAnswerIsImposter = Boolean(isImposter);
             if (roundId) {
                 activeAnswerRoundId = roundId;
             }

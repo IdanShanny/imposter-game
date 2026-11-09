@@ -380,6 +380,20 @@ textarea {
     color: var(--red-700) !important;
 }
 
+.imposter-role-banner {
+    background: linear-gradient(135deg, var(--red-50) 0%, #fff8f5 100%);
+    border: 2px solid var(--red-400);
+    color: var(--red-800);
+    font-weight: 700;
+    font-size: 1.0625rem;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    margin: var(--space-2) 0 var(--space-3);
+    text-align: center;
+    line-height: 1.45;
+    box-shadow: 0 2px 8px rgba(140, 40, 40, 0.08);
+}
+
 .answer-input-error {
     background: var(--red-50);
     border: 2px solid var(--red-600);
