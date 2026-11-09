@@ -731,22 +731,27 @@
                 nameEl.className = 'reveal-player-name';
                 nameEl.textContent = isWhoSaid
                     ? row.name
-                    : row.name + (row.isImposter ? ' (מתחזה)' : '');
+                    : row.name + (row.isImposter ? ' (המתחזה)' : '');
                 li.appendChild(nameEl);
 
                 if (!isWhoSaid && !isToDavar) {
+                    const answerEl = document.createElement('div');
+                    answerEl.className = 'reveal-player-answer';
+                    answerEl.textContent = `ענה: ${row.answer || '—'}`;
+                    li.appendChild(answerEl);
+
                     const guessEl = document.createElement('div');
                     guessEl.className = 'reveal-player-guess';
                     guessEl.textContent = row.votedForName
                         ? `ניחש: ${row.votedForName}`
                         : 'לא ניחש';
                     li.appendChild(guessEl);
+                } else {
+                    const answerEl = document.createElement('div');
+                    answerEl.className = 'reveal-player-answer';
+                    answerEl.textContent = row.answer || '—';
+                    li.appendChild(answerEl);
                 }
-
-                const answerEl = document.createElement('div');
-                answerEl.className = 'reveal-player-answer';
-                answerEl.textContent = row.answer || '—';
-                li.appendChild(answerEl);
 
                 const statsEl = document.createElement('div');
                 statsEl.className = 'reveal-player-votes';
@@ -754,7 +759,7 @@
                     ? `${row.timesCorrectlyGuessed} ניחשו אותו נכון · ${row.correctGuesses} ניחושים נכונים שלו`
                     : isToDavar
                         ? ''
-                        : `${row.votes} הצבעות`;
+                        : `קיבל ${row.votes} הצבעות`;
                 li.appendChild(statsEl);
                 list.appendChild(li);
             });
