@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { pickRandomRound } = require('./prompts');
+const prisma = require('../db');
 
 const rooms = new Map();
 
@@ -632,6 +633,19 @@ function submitVote(socket, io, targetPlayerId) {
     room.round.votes.set(playerId, targetPlayerId);
     broadcastVoteProgress(io, room);
     maybeAdvanceToReveal(io, room);
+
+    (async () => {
+      try {
+        const dbRoom = await prisma.room.findUnique({ where: { code } });
+        const dbRound = dbRoom ? await prisma.round.findFirst({ where: { roomId: dbRoom.id, roundId: room.round.roundId } }) : null;
+        if (dbRound) {
+          await prisma.vote.create({
+            data: { roundId: dbRound.id, voterId: playerId, targetId: targetPlayerId }
+          });
+        }
+      } catch {}
+    })();
+
     return { ok: true };
 }
 
@@ -1037,6 +1051,23 @@ function beginRound(io, room) {
     sendPromptsToPlayers(io, room);
     broadcastPhase(io, room);
     broadcastAnswerProgress(io, room);
+
+    (async () => {
+      try {
+        const dbRoom = await prisma.room.findUnique({ where: { code: room.code } });
+        if (dbRoom && room.round) {
+          await prisma.round.create({
+            data: {
+              roomId: dbRoom.id,
+              roundId: room.round.roundId,
+              gameType,
+              realQuestion: room.round.realQuestion || null,
+              imposterQuestion: room.round.imposterQuestion || null
+            }
+          });
+        }
+      } catch {}
+    })();
 }
 
 function startGame(socket, io) {
@@ -1119,6 +1150,24 @@ function submitAnswer(socket, io, text) {
 
     broadcastAnswerProgress(io, room);
     maybeAdvanceToDiscuss(io, room);
+
+    (async () => {
+      try {
+        const dbRoom = await prisma.room.findUnique({ where: { code } });
+        const dbRound = dbRoom ? await prisma.round.findFirst({ where: { roomId: dbRoom.id, roundId: room.round.roundId } }) : null;
+        if (dbRound) {
+          await prisma.answer.create({
+            data: {
+              roundId: dbRound.id,
+              playerId,
+              text: answerText,
+              isImposter: room.gameType === 'imposter' ? playerId === room.round.imposterPlayerId : null
+            }
+          });
+        }
+      } catch {}
+    })();
+
     return { ok: true };
 }
 
@@ -1158,6 +1207,13 @@ function createRoom(socket, playerName, gameType) {
 
     rooms.set(code, room);
     attachSocketToPlayer(socket, room, room.players.get(playerId));
+
+    (async () => {
+      try {
+        const dbRoom = await prisma.room.create({ data: { code, gameType: room.gameType } });
+        await prisma.player.create({ data: { playerId, roomId: dbRoom.id, name, ip: room.players.get(playerId).ip || null, isHost: true } });
+      } catch {}
+    })();
 
     return { room, playerId };
 }
@@ -1199,6 +1255,15 @@ function joinRoom(socket, code, playerName) {
     });
 
     attachSocketToPlayer(socket, room, room.players.get(playerId));
+
+    (async () => {
+      try {
+        const dbRoom = await prisma.room.findUnique({ where: { code: normalizedCode } });
+        if (dbRoom) {
+          await prisma.player.create({ data: { playerId, roomId: dbRoom.id, name, ip: room.players.get(playerId).ip || null, isHost: false } });
+        }
+      } catch {}
+    })();
 
     return { room, playerId };
 }
