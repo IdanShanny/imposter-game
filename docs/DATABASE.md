@@ -8,7 +8,7 @@ PostgreSQL via Prisma. Live gameplay stays in server memory; the DB records room
 |-------|---------|
 | `Room` | One row per created room (`code`, `gameType`, `createdAt`). |
 | `Player` | One row per lobby join (`name`, `ip`, session `playerId`, `isHost`). |
-| `Round` | One row per started round. To'Davar: `roundNumber`, `matched`, `winningWord`, `endedAt`. |
+| `Round` | One row per started round. To'Davar: `roundNumber`, `matched`, `winningWord`, `winningGroups` (JSON), `endedAt`. |
 | `Answer` | One word/answer per player per round (`text`, `normalizedText` for To'Davar). |
 | `Vote` | Imposter-mode votes only (`voterId` / `targetId` → `Player.id`). |
 

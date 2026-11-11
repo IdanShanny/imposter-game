@@ -39,6 +39,7 @@ model Round {
   imposterQuestion String?
   matched          Boolean?
   winningWord      String?
+  winningGroups    Json?
   startedAt        DateTime @default(now())
   endedAt          DateTime?
   room             Room     @relation(fields: [roomId], references: [id])

@@ -127,6 +127,7 @@
             </div>
             <div id="revealToDavarBlock" class="hidden">
                 <p id="revealToDavarOutcome" class="reveal-winners"></p>
+                <ul id="revealToDavarWinGroups" class="list-cards to-davar-win-groups hidden"></ul>
                 <p id="revealToDavarRound" class="hint"></p>
                 <p class="label label-players">המילים שנבחרו</p>
             </div>
@@ -680,18 +681,41 @@
                     data.realQuestion || '—';
             } else if (isToDavar) {
                 const outcomeEl = document.getElementById('revealToDavarOutcome');
-                outcomeEl.textContent = data.matched
-                    ? '🎉 הצלחתם — כולם בחרו באותה מילה!'
-                    : 'הפעם לא הסתנכרנתם — מנסים שוב עם מילה חדשה…';
-                outcomeEl.className = `reveal-winners ${
-                    data.matched ? 'outcome-win' : 'outcome-lose'
-                }`;
+                const groupsEl = document.getElementById('revealToDavarWinGroups');
+                groupsEl.innerHTML = '';
+                if (!data.matched) {
+                    outcomeEl.textContent =
+                        'הפעם לא הסתנכרנתם — מנסים שוב עם מילה חדשה…';
+                    outcomeEl.className = 'reveal-winners outcome-lose';
+                    groupsEl.classList.add('hidden');
+                } else if (data.allSynced) {
+                    outcomeEl.textContent =
+                        '🎉 מצוין! הצלחתם — כולם בחרו באותה מילה!';
+                    outcomeEl.className = 'reveal-winners outcome-win';
+                    groupsEl.classList.add('hidden');
+                } else {
+                    outcomeEl.textContent = '🎉 יש מנצחים!';
+                    outcomeEl.className = 'reveal-winners outcome-win';
+                    groupsEl.classList.remove('hidden');
+                    (data.winningGroups || []).forEach((group) => {
+                        const names = (group.players || []).map((p) => p.name).join(', ');
+                        const li = document.createElement('li');
+                        li.className = 'to-davar-win-group';
+                        li.textContent = `«${group.word}»: ${names}`;
+                        groupsEl.appendChild(li);
+                    });
+                }
                 document.getElementById('revealToDavarRound').textContent =
                     `סיבוב ${data.roundNumber} · ${data.matched ? 'ניצחון' : 'הסיבוב הסתיים'}`;
+                const winnerNames = new Set();
+                (data.winningGroups || []).forEach((group) => {
+                    (group.players || []).forEach((p) => winnerNames.add(p.name));
+                });
                 data.tallies = (data.words || []).map((word) => ({
                     name: word.name,
                     answer: word.word,
                     toDavar: true,
+                    isWinner: winnerNames.has(word.name),
                 }));
             } else {
                 const imposterNames = (data.imposters || []).map((p) => p.name);
@@ -729,9 +753,16 @@
                 }
                 const nameEl = document.createElement('div');
                 nameEl.className = 'reveal-player-name';
-                nameEl.textContent = isWhoSaid
+                if (isToDavar && row.isWinner) {
+                    li.classList.add('to-davar-winner-mark');
+                }
+                let displayName = isWhoSaid
                     ? row.name
                     : row.name + (row.isImposter ? ' (המתחזה)' : '');
+                if (isToDavar && row.isWinner) {
+                    displayName += ' (מנצח)';
+                }
+                nameEl.textContent = displayName;
                 li.appendChild(nameEl);
 
                 if (!isWhoSaid && !isToDavar) {

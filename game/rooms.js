@@ -170,14 +170,15 @@ async function persistToDavarRoundReveal(room, payload) {
         if (!dbRound) {
             return;
         }
-        const winningWord = payload.matched && payload.words?.length
-            ? payload.words[0].word
+        const firstWinningWord = payload.matched && payload.winningGroups?.length
+            ? payload.winningGroups[0].word
             : null;
         await prisma.round.update({
             where: { id: dbRound.id },
             data: {
                 matched: payload.matched,
-                winningWord,
+                winningWord: firstWinningWord,
+                winningGroups: payload.matched ? payload.winningGroups : null,
                 endedAt: new Date(),
             },
         });
@@ -858,22 +859,60 @@ function broadcastToDavarUsedWords(io, room, socket = null) {
     }
 }
 
+function computeToDavarWinningGroups(answers, expectedCount) {
+    if (answers.length < expectedCount) {
+        return {
+            matched: false,
+            allSynced: false,
+            winningGroups: [],
+        };
+    }
+    const byNormalized = new Map();
+    for (const answer of answers) {
+        const normalized = normalizeToDavarWord(answer.word);
+        if (!byNormalized.has(normalized)) {
+            byNormalized.set(normalized, []);
+        }
+        byNormalized.get(normalized).push(answer);
+    }
+    const winningGroups = [];
+    for (const [normalized, groupAnswers] of byNormalized) {
+        if (groupAnswers.length < 2) {
+            continue;
+        }
+        winningGroups.push({
+            word: groupAnswers[0].word,
+            normalized,
+            players: groupAnswers.map((entry) => ({
+                playerId: entry.playerId,
+                name: entry.name,
+            })),
+        });
+    }
+    winningGroups.sort((a, b) => b.players.length - a.players.length);
+    const matched = winningGroups.length > 0;
+    const allSynced = matched
+        && winningGroups.length === 1
+        && winningGroups[0].players.length === answers.length;
+    return { matched, allSynced, winningGroups };
+}
+
 function toDavarRevealPayload(room) {
     const answers = Array.from(room.round.answers.entries()).map(([playerId, entry]) => ({
         playerId,
         name: entry.name,
         word: entry.text,
     }));
-    const normalizedWords = new Set(
-        answers.map((answer) => normalizeToDavarWord(answer.word)),
+    const { matched, allSynced, winningGroups } = computeToDavarWinningGroups(
+        answers,
+        toDavarExpectedSubmissionCount(room),
     );
-    const matched =
-        answers.length >= toDavarExpectedSubmissionCount(room) &&
-        normalizedWords.size === 1;
     return {
         gameType: 'toDavar',
         roundNumber: room.toDavarRoundNumber,
         matched,
+        allSynced,
+        winningGroups,
         words: answers,
         usedWords: Array.from(room.toDavarUsedWords?.values() || []),
         playerCount: answers.length,

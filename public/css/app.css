@@ -673,6 +673,25 @@ textarea {
     font-weight: 500;
 }
 
+#revealTallies li.to-davar-winner-mark {
+    border: 1.5px solid var(--red-500);
+    background: var(--red-50);
+}
+
+.to-davar-win-groups {
+    margin: var(--space-2) 0 var(--space-3);
+}
+
+.to-davar-win-groups .to-davar-win-group {
+    font-weight: 600;
+    color: var(--red-800);
+    background: var(--red-50);
+    border: 1px solid var(--red-200);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+    margin-bottom: var(--space-2);
+}
+
 .reveal-player-name {
     font-weight: 600;
     font-size: 0.9375rem;
