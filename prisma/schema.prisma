@@ -34,8 +34,11 @@ model Round {
   roomId           String
   roundId          String
   gameType         String
+  roundNumber      Int?
   realQuestion     String?
   imposterQuestion String?
+  matched          Boolean?
+  winningWord      String?
   startedAt        DateTime @default(now())
   endedAt          DateTime?
   room             Room     @relation(fields: [roomId], references: [id])
@@ -48,6 +51,7 @@ model Answer {
   roundId        String
   playerId       String
   text           String
+  normalizedText String?
   submittedAt    DateTime @default(now())
   promptSentAt   DateTime?
   timeToAnswerMs Int?

@@ -75,6 +75,146 @@ function isSingleWord(text) {
     return normalizeAnswer(text).split(/\s+/).filter(Boolean).length === 1;
 }
 
+function logDbPersistError(label, err) {
+    console.error(`DB persist (${label}):`, err);
+}
+
+async function findDbRoomByCode(roomCode) {
+    return prisma.room.findUnique({ where: { code: roomCode } });
+}
+
+async function findDbRoundForRoom(dbRoomId, roundIdString) {
+    return prisma.round.findFirst({
+        where: { roomId: dbRoomId, roundId: roundIdString },
+    });
+}
+
+async function findDbPlayerForSession(dbRoomId, sessionPlayerId) {
+    return prisma.player.findFirst({
+        where: { roomId: dbRoomId, playerId: sessionPlayerId },
+        orderBy: { joinedAt: 'desc' },
+    });
+}
+
+async function persistRoundStart(room) {
+    if (!room.round) {
+        return;
+    }
+    const gameType = room.gameType || 'imposter';
+    try {
+        const dbRoom = await findDbRoomByCode(room.code);
+        if (!dbRoom) {
+            return;
+        }
+        const data = {
+            roomId: dbRoom.id,
+            roundId: room.round.roundId,
+            gameType,
+            realQuestion: room.round.realQuestion || null,
+            imposterQuestion: room.round.imposterQuestion || null,
+        };
+        if (gameType === 'toDavar') {
+            data.roundNumber = room.toDavarRoundNumber || null;
+        }
+        await prisma.round.create({ data });
+    } catch (err) {
+        logDbPersistError('round.start', err);
+    }
+}
+
+async function persistAnswerSubmitted(room, sessionPlayerId, answerText) {
+    if (!room.round) {
+        return;
+    }
+    try {
+        const dbRoom = await findDbRoomByCode(room.code);
+        if (!dbRoom) {
+            return;
+        }
+        const [dbRound, dbPlayer] = await Promise.all([
+            findDbRoundForRoom(dbRoom.id, room.round.roundId),
+            findDbPlayerForSession(dbRoom.id, sessionPlayerId),
+        ]);
+        if (!dbRound || !dbPlayer) {
+            return;
+        }
+        const gameType = room.gameType || 'imposter';
+        await prisma.answer.create({
+            data: {
+                roundId: dbRound.id,
+                playerId: dbPlayer.id,
+                text: answerText,
+                normalizedText: gameType === 'toDavar'
+                    ? normalizeToDavarWord(answerText)
+                    : null,
+                isImposter: gameType === 'imposter'
+                    ? sessionPlayerId === room.round.imposterPlayerId
+                    : null,
+            },
+        });
+    } catch (err) {
+        logDbPersistError('answer.submit', err);
+    }
+}
+
+async function persistToDavarRoundReveal(room, payload) {
+    if (!room.round) {
+        return;
+    }
+    try {
+        const dbRoom = await findDbRoomByCode(room.code);
+        if (!dbRoom) {
+            return;
+        }
+        const dbRound = await findDbRoundForRoom(dbRoom.id, room.round.roundId);
+        if (!dbRound) {
+            return;
+        }
+        const winningWord = payload.matched && payload.words?.length
+            ? payload.words[0].word
+            : null;
+        await prisma.round.update({
+            where: { id: dbRound.id },
+            data: {
+                matched: payload.matched,
+                winningWord,
+                endedAt: new Date(),
+            },
+        });
+    } catch (err) {
+        logDbPersistError('round.toDavarReveal', err);
+    }
+}
+
+async function persistVoteSubmitted(roomCode, roundIdString, voterSessionId, targetSessionId) {
+    try {
+        const dbRoom = await findDbRoomByCode(roomCode);
+        if (!dbRoom) {
+            return;
+        }
+        const dbRound = await findDbRoundForRoom(dbRoom.id, roundIdString);
+        if (!dbRound) {
+            return;
+        }
+        const [voter, target] = await Promise.all([
+            findDbPlayerForSession(dbRoom.id, voterSessionId),
+            findDbPlayerForSession(dbRoom.id, targetSessionId),
+        ]);
+        if (!voter || !target) {
+            return;
+        }
+        await prisma.vote.create({
+            data: {
+                roundId: dbRound.id,
+                voterId: voter.id,
+                targetId: target.id,
+            },
+        });
+    } catch (err) {
+        logDbPersistError('vote.submit', err);
+    }
+}
+
 /** Compare answers for "who said?" duplicate matching */
 function normalizeAnswerForCompare(text) {
     return String(text || '')
@@ -634,17 +774,7 @@ function submitVote(socket, io, targetPlayerId) {
     broadcastVoteProgress(io, room);
     maybeAdvanceToReveal(io, room);
 
-    (async () => {
-      try {
-        const dbRoom = await prisma.room.findUnique({ where: { code } });
-        const dbRound = dbRoom ? await prisma.round.findFirst({ where: { roomId: dbRoom.id, roundId: room.round.roundId } }) : null;
-        if (dbRound) {
-          await prisma.vote.create({
-            data: { roundId: dbRound.id, voterId: playerId, targetId: targetPlayerId }
-          });
-        }
-      } catch {}
-    })();
+    persistVoteSubmitted(code, room.round.roundId, playerId, targetPlayerId);
 
     return { ok: true };
 }
@@ -762,6 +892,7 @@ function beginToDavarReveal(io, room) {
     }
     const payload = toDavarRevealPayload(room);
     room.toDavarLastMatched = payload.matched;
+    persistToDavarRoundReveal(room, payload);
     broadcastReveal(io, room);
     broadcastPhase(io, room);
     if (!payload.matched) {
@@ -1016,6 +1147,7 @@ function beginRound(io, room) {
         broadcastPhase(io, room);
         broadcastToDavarUsedWords(io, room);
         broadcastAnswerProgress(io, room);
+        persistRoundStart(room);
         return;
     }
     const roundKey = rosterRoundKey(room);
@@ -1051,23 +1183,7 @@ function beginRound(io, room) {
     sendPromptsToPlayers(io, room);
     broadcastPhase(io, room);
     broadcastAnswerProgress(io, room);
-
-    (async () => {
-      try {
-        const dbRoom = await prisma.room.findUnique({ where: { code: room.code } });
-        if (dbRoom && room.round) {
-          await prisma.round.create({
-            data: {
-              roomId: dbRoom.id,
-              roundId: room.round.roundId,
-              gameType,
-              realQuestion: room.round.realQuestion || null,
-              imposterQuestion: room.round.imposterQuestion || null
-            }
-          });
-        }
-      } catch {}
-    })();
+    persistRoundStart(room);
 }
 
 function startGame(socket, io) {
@@ -1150,23 +1266,7 @@ function submitAnswer(socket, io, text) {
 
     broadcastAnswerProgress(io, room);
     maybeAdvanceToDiscuss(io, room);
-
-    (async () => {
-      try {
-        const dbRoom = await prisma.room.findUnique({ where: { code } });
-        const dbRound = dbRoom ? await prisma.round.findFirst({ where: { roomId: dbRoom.id, roundId: room.round.roundId } }) : null;
-        if (dbRound) {
-          await prisma.answer.create({
-            data: {
-              roundId: dbRound.id,
-              playerId,
-              text: answerText,
-              isImposter: room.gameType === 'imposter' ? playerId === room.round.imposterPlayerId : null
-            }
-          });
-        }
-      } catch {}
-    })();
+    persistAnswerSubmitted(room, playerId, answerText);
 
     return { ok: true };
 }
