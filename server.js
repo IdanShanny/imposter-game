@@ -6,9 +6,10 @@ const { Server } = require('socket.io');
 const app = express();
 app.set('trust proxy', 1);
 const { registerRoomHandlers } = require('./game/rooms');
+const { registerDbViewerRoutes } = require('./game/db-viewer');
 
 const PORT = process.env.PORT || 3000;
-const VERSION = '3.0.3';
+const VERSION = '3.0.4';
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -69,6 +70,8 @@ app.get('/api/qr.png', async (req, res) => {
         res.sendStatus(500);
     }
 });
+
+registerDbViewerRoutes(app);
 
 // פקודה שאומרת לשרת: כל הקבצים בתיקיית public (כמו ה-index.html) זמינים לציבור
 app.use(express.static('public'));
