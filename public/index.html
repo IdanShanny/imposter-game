@@ -30,16 +30,8 @@
             <div class="field-group">
                 <input type="text" id="roomCode" placeholder="חמש ספרות" inputmode="numeric" maxlength="5">
             </div>
-            <label class="label" for="gameTypeSelect">סוג משחק (בעת יצירת חדר)</label>
-            <div class="field-group">
-                <select id="gameTypeSelect" class="select-input">
-                    <option value="imposter">המתחזה</option>
-                    <option value="whoSaid">מי אמר?</option>
-                    <option value="toDavar">תו׳דבר</option>
-                </select>
-            </div>
             <button type="button" class="btn btn-primary" onclick="joinGame()">הצטרף לחדר</button>
-            <button type="button" class="btn btn-secondary" onclick="createRoom()">צור חדר חדש</button>
+            <button type="button" class="btn btn-secondary" onclick="requestCreateRoom()">צור חדר חדש</button>
             <p id="formError"></p>
         </div>
 
@@ -163,6 +155,25 @@
         </div>
     </div>
 
+    <div id="createRoomModal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="createRoomTitle">
+        <div class="app-modal-backdrop"></div>
+        <div class="app-modal-panel">
+            <h2 id="createRoomTitle" class="app-modal-title">בחר סוג משחק</h2>
+            <div class="field-group create-room-modal-field">
+                <label class="label" for="createRoomGameType">סוג משחק</label>
+                <select id="createRoomGameType" class="select-input">
+                    <option value="imposter">המתחזה</option>
+                    <option value="whoSaid">מי אמר?</option>
+                    <option value="toDavar">תו׳דבר</option>
+                </select>
+            </div>
+            <div class="app-modal-actions">
+                <button type="button" class="btn btn-primary" onclick="confirmCreateRoom()">צור חדר</button>
+                <button type="button" class="btn btn-ghost" onclick="closeCreateRoomModal()">ביטול</button>
+            </div>
+        </div>
+    </div>
+
     <div id="sessionRetiredModal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="sessionRetiredTitle">
         <div class="app-modal-backdrop"></div>
         <div class="app-modal-panel">
@@ -206,6 +217,8 @@
             reconnectionDelayMax: 5000,
         });
         const SESSION_KEY = 'imposterGameSession';
+        const CREATE_GAME_TYPE_KEY = 'createGameTypePref';
+        const VALID_CREATE_GAME_TYPES = new Set(['imposter', 'whoSaid', 'toDavar']);
         const realtimeEl = document.getElementById('realtimeStatus');
         const formErrorEl = document.getElementById('formError');
         let clientIsHost = false;
@@ -1420,16 +1433,46 @@
             clearAnswerInputError();
         });
 
-        function createRoom() {
+        function loadCreateGameTypePref() {
+            const stored = sessionStorage.getItem(CREATE_GAME_TYPE_KEY);
+            return VALID_CREATE_GAME_TYPES.has(stored) ? stored : 'imposter';
+        }
+
+        function saveCreateGameTypePref(gameType) {
+            sessionStorage.setItem(CREATE_GAME_TYPE_KEY, gameType);
+        }
+
+        function closeCreateRoomModal() {
+            document.getElementById('createRoomModal').classList.add('hidden');
+        }
+
+        function openCreateRoomModal() {
+            document.getElementById('createRoomGameType').value = loadCreateGameTypePref();
+            document.getElementById('createRoomModal').classList.remove('hidden');
+        }
+
+        function requestCreateRoom() {
             const name = getPlayerName();
             if (!name) {
                 showFormError('נא להזין שם לפני יצירת חדר');
                 return;
             }
             showFormError('');
+            openCreateRoomModal();
+        }
+
+        function confirmCreateRoom() {
+            const gameType = document.getElementById('createRoomGameType').value;
+            if (!VALID_CREATE_GAME_TYPES.has(gameType)) {
+                return;
+            }
+            saveCreateGameTypePref(gameType);
+            closeCreateRoomModal();
             sessionStorage.removeItem(SESSION_KEY);
-            const gameType = document.getElementById('gameTypeSelect').value;
-            socket.emit('room:create', { playerName: name, gameType });
+            socket.emit('room:create', {
+                playerName: getPlayerName(),
+                gameType,
+            });
         }
 
         function joinGame() {

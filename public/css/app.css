@@ -189,6 +189,11 @@ body {
     width: 100%;
 }
 
+.create-room-modal-field {
+    margin-bottom: var(--space-4);
+    text-align: right;
+}
+
 .screen {
     text-align: center;
 }
