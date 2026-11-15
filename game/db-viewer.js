@@ -32,6 +32,122 @@ async function fetchTableRows(tableName) {
     return prisma.$queryRawUnsafe(sql);
 }
 
+const KNOWN_GAME_TYPES = ['imposter', 'toDavar', 'whoSaid'];
+
+async function fetchRoomGameTypeDistribution() {
+    const groups = await prisma.room.groupBy({
+        by: ['gameType'],
+        _count: { _all: true },
+    });
+    const counts = Object.fromEntries(KNOWN_GAME_TYPES.map((t) => [t, 0]));
+    let other = 0;
+    for (const row of groups) {
+        const key = row.gameType || '(unset)';
+        const n = row._count._all;
+        if (Object.prototype.hasOwnProperty.call(counts, key)) {
+            counts[key] = n;
+        } else {
+            other += n;
+        }
+    }
+    const total = Object.values(counts).reduce((s, n) => s + n, 0) + other;
+    return { counts, other, total };
+}
+
+async function fetchToDavarWordsByGame() {
+    const rooms = await prisma.room.findMany({
+        where: { gameType: 'toDavar' },
+        orderBy: { createdAt: 'asc' },
+        select: {
+            code: true,
+            createdAt: true,
+            rounds: {
+                orderBy: { startedAt: 'asc' },
+                select: {
+                    answers: {
+                        orderBy: { submittedAt: 'asc' },
+                        select: { text: true, submittedAt: true },
+                    },
+                },
+            },
+        },
+    });
+    return rooms.map((room) => {
+        const words = room.rounds
+            .flatMap((round) => round.answers)
+            .sort((a, b) => a.submittedAt - b.submittedAt)
+            .map((a) => a.text);
+        return {
+            code: room.code,
+            createdAt: room.createdAt,
+            words,
+        };
+    });
+}
+
+function distributionToPlainText({ counts, other, total }) {
+    const lines = ['Room count by game type', '---', ''];
+    for (const gameType of KNOWN_GAME_TYPES) {
+        lines.push(`${gameType}: ${counts[gameType]}`);
+    }
+    if (other > 0) {
+        lines.push(`other: ${other}`);
+    }
+    lines.push('', `Total: ${total}`, '');
+    return lines.join('\n');
+}
+
+function toDavarWordsToPlainText(games) {
+    const lines = [
+        "To'Davar words by game (submission order, earliest → latest)",
+        '---',
+        '',
+    ];
+    if (games.length === 0) {
+        lines.push('(no To\'Davar rooms yet)', '');
+        return lines.join('\n');
+    }
+    for (const game of games) {
+        const when = game.createdAt instanceof Date
+            ? game.createdAt.toISOString()
+            : String(game.createdAt);
+        lines.push(`Room ${game.code} (created ${when})`);
+        if (game.words.length === 0) {
+            lines.push('  (no answers recorded)');
+        } else {
+            for (const word of game.words) {
+                lines.push(`  ${word}`);
+            }
+        }
+        lines.push('');
+    }
+    return lines.join('\n');
+}
+
+function renderDbIndexList(tables) {
+    const reportRoomDistribution = '/db/Room/Distribution';
+    const reportToDavarWords = '/db/Answer/todavar-words';
+
+    return tables
+        .map((name) => {
+            const href = `/db/${encodeURIComponent(name)}`;
+            let extra = '';
+            if (name === 'Room') {
+                extra = `
+    <ul>
+      <li><a href="${reportRoomDistribution}">Distribution</a> — room count by game type</li>
+    </ul>`;
+            } else if (name === 'Answer') {
+                extra = `
+    <ul>
+      <li><a href="${reportToDavarWords}">To'Davar words (chronological)</a> — words per game, in entry order</li>
+    </ul>`;
+            }
+            return `<li><a href="${href}">${escapeHtml(name)}</a>${extra}</li>`;
+        })
+        .join('\n');
+}
+
 function rowsToPlainText(rows) {
     if (!rows || rows.length === 0) {
         return '(empty table)\n';
@@ -54,12 +170,7 @@ function registerDbViewerRoutes(app) {
     app.get('/db', async (req, res) => {
         try {
             const tables = await listPublicTables();
-            const items = tables
-                .map((name) => {
-                    const href = `/db/${encodeURIComponent(name)}`;
-                    return `<li><a href="${href}">${escapeHtml(name)}</a></li>`;
-                })
-                .join('\n');
+            const items = renderDbIndexList(tables);
             res.type('html').send(`<!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
@@ -70,6 +181,8 @@ function registerDbViewerRoutes(app) {
     body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; }
     h1 { font-size: 1.25rem; }
     a { color: #a31c1c; }
+    ul ul { margin: 0.35rem 0 0.5rem 0; font-size: 0.95rem; }
+    ul ul li { margin: 0.25rem 0; color: #444; }
   </style>
 </head>
 <body>
@@ -81,6 +194,26 @@ function registerDbViewerRoutes(app) {
         } catch (err) {
             console.error('DB viewer index failed:', err);
             res.status(500).type('text/plain').send('Failed to list tables.\n');
+        }
+    });
+
+    app.get('/db/Room/Distribution', async (req, res) => {
+        try {
+            const data = await fetchRoomGameTypeDistribution();
+            res.type('text/plain; charset=utf-8').send(distributionToPlainText(data));
+        } catch (err) {
+            console.error('DB report room distribution failed:', err);
+            res.status(500).type('text/plain').send('Failed to load report.\n');
+        }
+    });
+
+    app.get('/db/Answer/todavar-words', async (req, res) => {
+        try {
+            const games = await fetchToDavarWordsByGame();
+            res.type('text/plain; charset=utf-8').send(toDavarWordsToPlainText(games));
+        } catch (err) {
+            console.error('DB report toDavar words failed:', err);
+            res.status(500).type('text/plain').send('Failed to load report.\n');
         }
     });
 
