@@ -114,6 +114,26 @@ body {
     letter-spacing: 0.01em;
 }
 
+.home-nav-btn {
+    display: block;
+    width: 100%;
+    margin-top: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--red-700);
+    background: transparent;
+    border: 1px dashed var(--red-200);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.home-nav-btn:hover {
+    background: var(--red-50);
+    border-color: var(--red-400);
+}
+
 .screen {
     text-align: center;
 }

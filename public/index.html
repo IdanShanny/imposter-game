@@ -15,6 +15,9 @@
         <header class="app-header">
             <h1 class="app-title">נפגשים</h1>
             <p class="app-tagline">המתחזה · מי אמר? · תו׳דבר</p>
+            <button type="button" id="homeNavBtn" class="home-nav-btn hidden" onclick="leaveToHome()">
+                חזרה למסך הראשי
+            </button>
         </header>
 
         <div id="screenEntry" class="screen">
@@ -561,9 +564,17 @@
             document.getElementById('screenReveal').classList.add('hidden');
         }
 
+        function syncHomeNavVisibility() {
+            const entryVisible = !document
+                .getElementById('screenEntry')
+                .classList.contains('hidden');
+            document.getElementById('homeNavBtn').classList.toggle('hidden', entryVisible);
+        }
+
         function showStartingScreen() {
             hideAllScreens();
             document.getElementById('screenStarting').classList.remove('hidden');
+            syncHomeNavVisibility();
             showFormError('');
         }
 
@@ -603,6 +614,7 @@
         function showAnswerScreen() {
             hideAllScreens();
             document.getElementById('screenAnswer').classList.remove('hidden');
+            syncHomeNavVisibility();
             setGameModeUI(clientGameType);
             showFormError('');
         }
@@ -625,6 +637,7 @@
         function showDiscussScreen() {
             hideAllScreens();
             document.getElementById('screenDiscuss').classList.remove('hidden');
+            syncHomeNavVisibility();
             updateDiscussPanelsForGameType();
             showFormError('');
         }
@@ -641,6 +654,7 @@
         function showRevealScreen() {
             hideAllScreens();
             document.getElementById('screenReveal').classList.remove('hidden');
+            syncHomeNavVisibility();
             showFormError('');
         }
 
@@ -973,6 +987,7 @@
         function showLobby(code, players, isHost) {
             hideAllScreens();
             document.getElementById('screenLobby').classList.remove('hidden');
+            syncHomeNavVisibility();
             setGameModeUI(clientGameType);
             document.getElementById('lobbyCode').textContent = code;
             document.getElementById('lobbyQr').src = `/api/qr.png?code=${encodeURIComponent(code)}`;
@@ -1280,21 +1295,38 @@
         function resetToEntryScreen() {
             hideAllScreens();
             document.getElementById('screenEntry').classList.remove('hidden');
+            syncHomeNavVisibility();
             document.getElementById('roomCode').value = '';
             showFormError('');
             clientIsHost = false;
             clientPlayerId = null;
+            clientPlayers = [];
+            clientGameType = 'imposter';
+            setGameModeUI('imposter');
             cachedDiscussAnswers = [];
+            cachedWhoSaidStep = null;
             cachedReveal = null;
             cachedPromptQuestion = null;
+            cachedAnswerIsImposter = false;
             activeAnswerRoundId = null;
             playAgainRequested = false;
+            selectedDiscussTargetId = null;
+            discussVoteLocked = false;
+            selectedWhoSaidTargetId = null;
+            whoSaidGuessLocked = false;
+            whoSaidIsAuthor = false;
+            minPlayersToStart = MIN_PLAYERS_TO_START;
+            clearAnswerInputError();
         }
 
-        function startNewGame() {
+        function leaveToHome() {
             sessionStorage.removeItem(SESSION_KEY);
             socket.emit('room:leave');
             resetToEntryScreen();
+        }
+
+        function startNewGame() {
+            leaveToHome();
         }
 
         function requestPlayAgainSame() {
