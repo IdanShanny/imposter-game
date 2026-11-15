@@ -15,7 +15,7 @@
         <header class="app-header">
             <h1 class="app-title">נפגשים</h1>
             <p class="app-tagline">המתחזה · מי אמר? · תו׳דבר</p>
-            <button type="button" id="homeNavBtn" class="home-nav-btn hidden" onclick="leaveToHome()">
+            <button type="button" id="homeNavBtn" class="home-nav-btn hidden" onclick="requestLeaveHome()">
                 חזרה למסך הראשי
             </button>
         </header>
@@ -138,7 +138,7 @@
             <div class="reveal-actions">
                 <button type="button" id="playAgainBtn" class="btn btn-secondary" onclick="requestPlayAgainSame()">משחק נוסף עם אותם משתתפים</button>
                 <p id="playAgainProgress" class="hint"></p>
-                <button type="button" id="startNewGameBtn" class="btn btn-primary" onclick="startNewGame()">משחק חדש</button>
+                <button type="button" id="startNewGameBtn" class="btn btn-primary" onclick="requestLeaveHome()">משחק חדש</button>
             </div>
         </div>
 
@@ -146,6 +146,31 @@
             <p id="serverStatus">בודק חיבור לשרת…</p>
             <p id="realtimeStatus" class="pending">מתחבר בזמן אמת…</p>
         </footer>
+    </div>
+
+    <div id="confirmLeaveModal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirmLeaveTitle">
+        <div class="app-modal-backdrop"></div>
+        <div class="app-modal-panel">
+            <h2 id="confirmLeaveTitle" class="app-modal-title">לצאת למסך הראשי?</h2>
+            <p class="app-modal-body">
+                המשחק ייסגר לכל מי שנמצא בחדר. לא ניתן לבטל פעולה זו אחרי האישור.
+            </p>
+            <div class="app-modal-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeConfirmLeaveModal()">ביטול</button>
+                <button type="button" class="btn btn-primary" onclick="confirmLeaveHome()">כן, לצאת ולסגור את החדר</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="sessionRetiredModal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="sessionRetiredTitle">
+        <div class="app-modal-backdrop"></div>
+        <div class="app-modal-panel">
+            <h2 id="sessionRetiredTitle" class="app-modal-title">המשחק נסגר</h2>
+            <p id="sessionRetiredMessage" class="app-modal-body"></p>
+            <div class="app-modal-actions">
+                <button type="button" class="btn btn-primary" onclick="acknowledgeSessionRetired()">אישור — חזרה למסך הראשי</button>
+            </div>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -1042,9 +1067,17 @@
             applyRoomState(payload);
         });
 
-        socket.on('room:disbanded', () => {
-            sessionStorage.removeItem(SESSION_KEY);
-            resetToEntryScreen();
+        socket.on('room:disbanded', ({ message }) => {
+            showSessionRetiredModal(
+                message || 'החדר נסגר. לחצו אישור כדי לחזור למסך הראשי.',
+            );
+        });
+
+        socket.on('room:sessionRetired', ({ playerName }) => {
+            const name = playerName ? String(playerName) : 'שחקן';
+            showSessionRetiredModal(
+                `${name} יצא/ה מהחדר. המשחק נסגר לכולם — לחצו אישור כדי לחזור למסך הראשי.`,
+            );
         });
 
         socket.on('room:players', ({ players, phase, minPlayersToStart: serverMinPlayers }) => {
@@ -1319,14 +1352,46 @@
             clearAnswerInputError();
         }
 
-        function leaveToHome() {
+        function closeConfirmLeaveModal() {
+            document.getElementById('confirmLeaveModal').classList.add('hidden');
+        }
+
+        function showConfirmLeaveModal() {
+            document.getElementById('confirmLeaveModal').classList.remove('hidden');
+        }
+
+        function requestLeaveHome() {
+            if (document.getElementById('screenEntry').classList.contains('hidden')) {
+                showConfirmLeaveModal();
+            } else {
+                finalizeReturnHome();
+            }
+        }
+
+        function confirmLeaveHome() {
+            closeConfirmLeaveModal();
+            if (!loadSession()?.code) {
+                finalizeReturnHome();
+                return;
+            }
+            socket.emit('room:retireSession');
+        }
+
+        function showSessionRetiredModal(message) {
+            closeConfirmLeaveModal();
+            document.getElementById('sessionRetiredMessage').textContent = message;
+            document.getElementById('sessionRetiredModal').classList.remove('hidden');
+        }
+
+        function acknowledgeSessionRetired() {
+            document.getElementById('sessionRetiredModal').classList.add('hidden');
+            finalizeReturnHome();
+        }
+
+        function finalizeReturnHome() {
             sessionStorage.removeItem(SESSION_KEY);
             socket.emit('room:leave');
             resetToEntryScreen();
-        }
-
-        function startNewGame() {
-            leaveToHome();
         }
 
         function requestPlayAgainSame() {

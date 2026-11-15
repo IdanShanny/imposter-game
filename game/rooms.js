@@ -700,8 +700,21 @@ function canStartRematch(room) {
     return true;
 }
 
+function clearRoomSocketMembership(io, code, playerSocket) {
+    if (!playerSocket) {
+        return;
+    }
+    delete playerSocket.data.roomCode;
+    delete playerSocket.data.playerId;
+    playerSocket.leave(code);
+}
+
 function disbandRoom(io, room, message) {
     const code = room.code;
+    if (room.toDavarNextRoundTimer) {
+        clearTimeout(room.toDavarNextRoundTimer);
+        room.toDavarNextRoundTimer = null;
+    }
     for (const player of room.players.values()) {
         if (player.disconnectTimer) {
             clearTimeout(player.disconnectTimer);
@@ -711,11 +724,53 @@ function disbandRoom(io, room, message) {
         const playerSocket = io.sockets.sockets.get(player.socketId);
         if (!playerSocket) continue;
         playerSocket.emit('room:disbanded', { message });
-        delete playerSocket.data.roomCode;
-        delete playerSocket.data.playerId;
-        playerSocket.leave(code);
+        clearRoomSocketMembership(io, code, playerSocket);
     }
     rooms.delete(code);
+}
+
+function retireRoomSession(io, socket) {
+    const code = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!code || !playerId) {
+        return { error: 'אינך בחדר' };
+    }
+
+    const room = rooms.get(code);
+    if (!room) {
+        return { error: 'חדר לא נמצא' };
+    }
+
+    const player = room.players.get(playerId);
+    if (!player) {
+        return { error: 'שחקן לא נמצא' };
+    }
+
+    if (room.sessionRetiring) {
+        return { ok: true };
+    }
+    room.sessionRetiring = true;
+
+    if (room.toDavarNextRoundTimer) {
+        clearTimeout(room.toDavarNextRoundTimer);
+        room.toDavarNextRoundTimer = null;
+    }
+
+    const playerName = player.name;
+    io.to(code).emit('room:sessionRetired', { playerName });
+
+    for (const member of room.players.values()) {
+        if (member.disconnectTimer) {
+            clearTimeout(member.disconnectTimer);
+            member.disconnectTimer = null;
+        }
+        if (!member.socketId) continue;
+        const memberSocket = io.sockets.sockets.get(member.socketId);
+        clearRoomSocketMembership(io, code, memberSocket);
+    }
+
+    rooms.delete(code);
+    return { ok: true };
 }
 
 function beginRevealPhase(io, room) {
@@ -1676,6 +1731,13 @@ function registerRoomHandlers(io, socket) {
 
     socket.on('room:leave', safeSocketHandler('room:leave', () => {
         leaveRoomVoluntary(io, socket);
+    }));
+
+    socket.on('room:retireSession', safeSocketHandler('room:retireSession', () => {
+        const result = retireRoomSession(io, socket);
+        if (result.error) {
+            socket.emit('room:error', { message: result.error });
+        }
     }));
 
     socket.on('disconnect', safeSocketHandler('disconnect', () => {
