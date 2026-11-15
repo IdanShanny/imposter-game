@@ -1,5 +1,40 @@
 const prisma = require('../db');
 
+const DB_FAVICON_LINK =
+    '<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗄️</text></svg>">';
+
+const DB_PAGE_STYLES = `
+    body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; }
+    h1 { font-size: 1.25rem; }
+    a { color: #a31c1c; }
+    pre { white-space: pre-wrap; word-break: break-word; font-size: 0.875rem; }
+    ul ul { margin: 0.35rem 0 0.5rem 0; font-size: 0.95rem; }
+    ul ul li { margin: 0.25rem 0; color: #444; }
+`;
+
+function renderDbHtmlDocument(title, bodyHtml) {
+    return `<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}</title>
+  ${DB_FAVICON_LINK}
+  <style>${DB_PAGE_STYLES}</style>
+</head>
+<body>
+${bodyHtml}
+</body>
+</html>`;
+}
+
+function renderDbPlainTextPage(title, plainText) {
+    const body = `
+  <p><a href="/db">← Database tables</a> · <a href="/">App</a></p>
+  <pre>${escapeHtml(plainText)}</pre>`;
+    return renderDbHtmlDocument(title, body);
+}
+
 function escapeHtml(text) {
     return String(text)
         .replace(/&/g, '&amp;')
@@ -178,26 +213,11 @@ function registerDbViewerRoutes(app) {
         try {
             const tables = await listPublicTables();
             const items = renderDbIndexList(tables);
-            res.type('html').send(`<!DOCTYPE html>
-<html lang="en" dir="ltr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Database tables</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; }
-    h1 { font-size: 1.25rem; }
-    a { color: #a31c1c; }
-    ul ul { margin: 0.35rem 0 0.5rem 0; font-size: 0.95rem; }
-    ul ul li { margin: 0.25rem 0; color: #444; }
-  </style>
-</head>
-<body>
+            const indexBody = `
   <h1>Database tables</h1>
   <p><a href="/">← Back to app</a></p>
-  <ul>${items || '<li>(no tables)</li>'}</ul>
-</body>
-</html>`);
+  <ul>${items || '<li>(no tables)</li>'}</ul>`;
+            res.type('html').send(renderDbHtmlDocument('Database tables', indexBody));
         } catch (err) {
             console.error('DB viewer index failed:', err);
             res.status(500).type('text/plain').send('Failed to list tables.\n');
@@ -207,7 +227,10 @@ function registerDbViewerRoutes(app) {
     app.get('/db/Room/Distribution', async (req, res) => {
         try {
             const data = await fetchRoomGameTypeDistribution();
-            res.type('text/plain; charset=utf-8').send(distributionToPlainText(data));
+            const title = 'Room distribution';
+            res.type('html').send(
+                renderDbPlainTextPage(title, distributionToPlainText(data)),
+            );
         } catch (err) {
             console.error('DB report room distribution failed:', err);
             res.status(500).type('text/plain').send('Failed to load report.\n');
@@ -217,7 +240,10 @@ function registerDbViewerRoutes(app) {
     app.get('/db/Answer/todavar-words', async (req, res) => {
         try {
             const games = await fetchToDavarWordsByGame();
-            res.type('text/plain; charset=utf-8').send(toDavarWordsToPlainText(games));
+            const title = "To'Davar words";
+            res.type('html').send(
+                renderDbPlainTextPage(title, toDavarWordsToPlainText(games)),
+            );
         } catch (err) {
             console.error('DB report toDavar words failed:', err);
             res.status(500).type('text/plain').send('Failed to load report.\n');
@@ -238,7 +264,9 @@ function registerDbViewerRoutes(app) {
                 '---',
                 rowsToPlainText(rows),
             ].join('\n');
-            res.type('text/plain; charset=utf-8').send(body);
+            res.type('html').send(
+                renderDbPlainTextPage(`Table: ${tableName}`, body),
+            );
         } catch (err) {
             console.error('DB viewer table failed:', err);
             res.status(500).type('text/plain').send('Failed to load table.\n');
