@@ -9,7 +9,7 @@ const { registerRoomHandlers } = require('./game/rooms');
 const { registerDbViewerRoutes } = require('./game/db-viewer');
 
 const PORT = process.env.PORT || 3000;
-const VERSION = '3.0.7';
+const VERSION = '3.0.8';
 
 const server = http.createServer(app);
 const io = new Server(server, {

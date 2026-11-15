@@ -85,13 +85,22 @@ async function fetchToDavarWordsByGame() {
     });
 }
 
+function formatShare(count, total) {
+    if (!total) {
+        return '(0%)';
+    }
+    const pct = (count / total) * 100;
+    return `(${pct.toFixed(1)}%)`;
+}
+
 function distributionToPlainText({ counts, other, total }) {
     const lines = ['Room count by game type', '---', ''];
     for (const gameType of KNOWN_GAME_TYPES) {
-        lines.push(`${gameType}: ${counts[gameType]}`);
+        const n = counts[gameType];
+        lines.push(`${gameType}: ${n} ${formatShare(n, total)}`);
     }
     if (other > 0) {
-        lines.push(`other: ${other}`);
+        lines.push(`other: ${other} ${formatShare(other, total)}`);
     }
     lines.push('', `Total: ${total}`, '');
     return lines.join('\n');
@@ -115,9 +124,7 @@ function toDavarWordsToPlainText(games) {
         if (game.words.length === 0) {
             lines.push('  (no answers recorded)');
         } else {
-            for (const word of game.words) {
-                lines.push(`  ${word}`);
-            }
+            lines.push(`  ${game.words.join(', ')}`);
         }
         lines.push('');
     }
