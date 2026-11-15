@@ -757,7 +757,7 @@ function retireRoomSession(io, socket) {
     }
 
     const playerName = player.name;
-    io.to(code).emit('room:sessionRetired', { playerName });
+    socket.to(code).emit('room:sessionRetired', { playerName });
 
     for (const member of room.players.values()) {
         if (member.disconnectTimer) {

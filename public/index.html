@@ -1375,6 +1375,7 @@
                 return;
             }
             socket.emit('room:retireSession');
+            finalizeReturnHome();
         }
 
         function showSessionRetiredModal(message) {
