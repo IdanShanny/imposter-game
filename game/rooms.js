@@ -4,6 +4,10 @@ const path = require('path');
 const { pickRandomRound } = require('./prompts');
 const prisma = require('../db');
 
+function isDbEnabled() {
+    return prisma != null;
+}
+
 const rooms = new Map();
 
 const MAX_NAME_LENGTH = 20;
@@ -97,7 +101,7 @@ async function findDbPlayerForSession(dbRoomId, sessionPlayerId) {
 }
 
 async function persistRoundStart(room) {
-    if (!room.round) {
+    if (!isDbEnabled() || !room.round) {
         return;
     }
     const gameType = room.gameType || 'imposter';
@@ -123,7 +127,7 @@ async function persistRoundStart(room) {
 }
 
 async function persistAnswerSubmitted(room, sessionPlayerId, answerText) {
-    if (!room.round) {
+    if (!isDbEnabled() || !room.round) {
         return;
     }
     try {
@@ -158,7 +162,7 @@ async function persistAnswerSubmitted(room, sessionPlayerId, answerText) {
 }
 
 async function persistToDavarRoundReveal(room, payload) {
-    if (!room.round) {
+    if (!isDbEnabled() || !room.round) {
         return;
     }
     try {
@@ -188,6 +192,9 @@ async function persistToDavarRoundReveal(room, payload) {
 }
 
 async function persistVoteSubmitted(roomCode, roundIdString, voterSessionId, targetSessionId) {
+    if (!isDbEnabled()) {
+        return;
+    }
     try {
         const dbRoom = await findDbRoomByCode(roomCode);
         if (!dbRoom) {
@@ -1402,12 +1409,26 @@ function createRoom(socket, playerName, gameType) {
     rooms.set(code, room);
     attachSocketToPlayer(socket, room, room.players.get(playerId));
 
-    (async () => {
-      try {
-        const dbRoom = await prisma.room.create({ data: { code, gameType: room.gameType } });
-        await prisma.player.create({ data: { playerId, roomId: dbRoom.id, name, ip: room.players.get(playerId).ip || null, isHost: true } });
-      } catch {}
-    })();
+    if (isDbEnabled()) {
+        (async () => {
+            try {
+                const dbRoom = await prisma.room.create({
+                    data: { code, gameType: room.gameType },
+                });
+                await prisma.player.create({
+                    data: {
+                        playerId,
+                        roomId: dbRoom.id,
+                        name,
+                        ip: room.players.get(playerId).ip || null,
+                        isHost: true,
+                    },
+                });
+            } catch (err) {
+                logDbPersistError('room.create', err);
+            }
+        })();
+    }
 
     return { room, playerId };
 }
@@ -1450,14 +1471,26 @@ function joinRoom(socket, code, playerName) {
 
     attachSocketToPlayer(socket, room, room.players.get(playerId));
 
-    (async () => {
-      try {
-        const dbRoom = await prisma.room.findUnique({ where: { code: normalizedCode } });
-        if (dbRoom) {
-          await prisma.player.create({ data: { playerId, roomId: dbRoom.id, name, ip: room.players.get(playerId).ip || null, isHost: false } });
-        }
-      } catch {}
-    })();
+    if (isDbEnabled()) {
+        (async () => {
+            try {
+                const dbRoom = await prisma.room.findUnique({ where: { code: normalizedCode } });
+                if (dbRoom) {
+                    await prisma.player.create({
+                        data: {
+                            playerId,
+                            roomId: dbRoom.id,
+                            name,
+                            ip: room.players.get(playerId).ip || null,
+                            isHost: false,
+                        },
+                    });
+                }
+            } catch (err) {
+                logDbPersistError('player.join', err);
+            }
+        })();
+    }
 
     return { room, playerId };
 }

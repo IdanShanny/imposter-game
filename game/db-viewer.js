@@ -208,7 +208,24 @@ function rowsToPlainText(rows) {
     return `${lines.join('\n')}\n`;
 }
 
+function registerDbUnavailableRoutes(app) {
+    const body = `
+  <h1>Database unavailable</h1>
+  <p>Postgres is not configured or is temporarily unreachable. Gameplay is unaffected.</p>
+  <p><a href="/">← Back to app</a></p>`;
+    const handler = (req, res) => {
+        res.type('html').send(renderDbHtmlDocument('Database unavailable', body));
+    };
+    app.get('/db', handler);
+    app.get(/^\/db\/.*$/, handler);
+}
+
 function registerDbViewerRoutes(app) {
+    if (!prisma) {
+        registerDbUnavailableRoutes(app);
+        return;
+    }
+
     app.get('/db', async (req, res) => {
         try {
             const tables = await listPublicTables();
@@ -220,7 +237,9 @@ function registerDbViewerRoutes(app) {
             res.type('html').send(renderDbHtmlDocument('Database tables', indexBody));
         } catch (err) {
             console.error('DB viewer index failed:', err);
-            res.status(500).type('text/plain').send('Failed to list tables.\n');
+            res.type('html').send(
+                renderDbPlainTextPage('Database unavailable', 'Database is temporarily unreachable.\n'),
+            );
         }
     });
 
@@ -233,7 +252,9 @@ function registerDbViewerRoutes(app) {
             );
         } catch (err) {
             console.error('DB report room distribution failed:', err);
-            res.status(500).type('text/plain').send('Failed to load report.\n');
+            res.type('html').send(
+                renderDbPlainTextPage('Database unavailable', 'Database is temporarily unreachable.\n'),
+            );
         }
     });
 
@@ -246,7 +267,9 @@ function registerDbViewerRoutes(app) {
             );
         } catch (err) {
             console.error('DB report toDavar words failed:', err);
-            res.status(500).type('text/plain').send('Failed to load report.\n');
+            res.type('html').send(
+                renderDbPlainTextPage('Database unavailable', 'Database is temporarily unreachable.\n'),
+            );
         }
     });
 
@@ -269,7 +292,9 @@ function registerDbViewerRoutes(app) {
             );
         } catch (err) {
             console.error('DB viewer table failed:', err);
-            res.status(500).type('text/plain').send('Failed to load table.\n');
+            res.type('html').send(
+                renderDbPlainTextPage('Database unavailable', 'Database is temporarily unreachable.\n'),
+            );
         }
     });
 }

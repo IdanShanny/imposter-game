@@ -8,8 +8,12 @@ app.set('trust proxy', 1);
 const { registerRoomHandlers } = require('./game/rooms');
 const { registerDbViewerRoutes } = require('./game/db-viewer');
 
+if (!process.env.DATABASE_URL) {
+    console.warn('DATABASE_URL unset — audit log and /db disabled; gameplay is in-memory only.');
+}
+
 const PORT = process.env.PORT || 3000;
-const VERSION = '3.0.11';
+const VERSION = '3.0.12';
 
 const server = http.createServer(app);
 const io = new Server(server, {
